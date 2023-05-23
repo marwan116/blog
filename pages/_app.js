@@ -3,6 +3,12 @@ import Head from 'next/head'
 
 import '../styles/main.css'
 
+import "@code-hike/mdx/dist/index.css"
+
+export default function MyApp({ Component, pageProps }) {
+  return <Component {...pageProps} />
+}
+
 export default function Nextra({ Component, pageProps }) {
   return (
     <>
