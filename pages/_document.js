@@ -3,7 +3,7 @@ import { Html, Head, Main, NextScript } from 'next/document'
 export default function Document() {
   const meta = {
     title: "Marwan Sarieddine's Blog",
-    description: 'A personal accumulation of curious ideas.',
+    description: 'Data and ML engineering blog.',
     image: 'https://assets.vercel.com/image/upload/q_auto/front/vercel/dps.png'
   }
 
