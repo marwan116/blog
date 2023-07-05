@@ -7,6 +7,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@vercel/analytics": "^1.0.1",
     "gray-matter": "^4.0.2",
     "next": "^12.3.4",
     "nextra": "^2.6.0",
