@@ -1,7 +1,7 @@
 ---
 title: "A showcase of Flaky Tests: How not to footgun yourself when writing tests"
 date: 2023/08/15
-description: Summarizing and showcasing valuable learnings about flaky tests inspired by a talk python podcast titled "Taming Flaky Tests"
+description: Valuable learnings about flaky tests inspired by a talk python podcast titled "Taming Flaky Tests"
 tag: testing, python, pytest
 author: Marwan
 ---

@@ -60,6 +60,48 @@ img.next-image {
   color: #0074de;
 }
 
+.nx-prose {
+  max-width: 100ch;
+}
+
+.nx-prose p {
+  font-size: x-large;
+  line-height: 2.0;
+}
+
+.nx-prose ul {
+  font-size: x-large;
+  line-height: 2.0;
+}
+
+.nx-prose .post-item p {
+  font-size: medium;
+  line-height: 1.5;
+}
+
+.nx-prose h1 {
+  font-size: 3.25em ;
+}
+
+
+.nx-prose h2 {
+  font-size: 2.75em ;
+}
+
+.nx-prose h3 {
+  font-size: 2.50em ;
+}
+
+.nx-prose h4 {
+  font-size: 2.00em ;
+}
+
+
+.nx-not-prose code {
+  font-size: 1.4em;
+  line-height: 1.25;
+}
+
 .nav-line .nav-link {
   color: #69778c;
 }
