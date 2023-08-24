@@ -64,6 +64,18 @@ img.next-image {
   max-width: 100ch;
 }
 
+.nx-prose a {
+  font-size: x-large;
+}
+
+.nx-prose .nx-text-gray-400 a {
+  font-size: medium;
+}
+
+.nx-prose span {
+  font-size: x-large;
+}
+
 .nx-prose p {
   font-size: x-large;
   line-height: 2.0;

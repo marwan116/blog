@@ -13,25 +13,28 @@ To avoid this article from being a simple regurgitation of the transcript of the
 
 # Table of Contents
 
-This article is mainly a showcase of code examples of flaky tests. I have borrowed a categorization of the flaky tests referenced in the paper [Surveying the developer experience of flaky tests](https://www.gregorykapfhammer.com/download/research/papers/key/Parry2022-paper.pdf) by Owain Parry, Gregory M. Kapfhammer, Michael Hinton and Phil McMinn.
+Here is the table of contents covering the different types of flaky tests that will be covered in this article:
 
-Accordingly, here is a table of contents of the different types of flaky tests that I will be covering in this article:
-
-- Intra-test flakiness
-    - Concurrency - The GIL won't save you
-    - Randomness
-        - Algorithmic non-determinism
-    - Floating point arithmetic
-    - Missing corner cases (test is too restrictive)
-    - Timeout - Make sure your timeout is not too short
-- Inter-test flakiness
-    - Test order dependency
-        - State pollution by incorrect mocking/monkey-patching
-        - Incorrect scoping of fixtures
-        - Database state pollution
-- External factors
+- [Intra-test flakiness](#intra-test-flakiness)
+    - [Concurrency - The GIL won't save you](#concurrency---the-gil-wont-save-you)
+    - [Randomness](#randomness)
+        - [Algorithmic non-determinism](#algorithmic-non-determinism)
+    - [Floating point arithmetic](#floating-point-arithmetic)
+        - [Underflow or overflow issues](#underflow-or-overflow-issues)
+        - [Loss in precision](#loss-in-precision)
+    - [Missing corner cases (test is too restrictive)](#missing-corner-cases-test-is-too-restrictive)
+        - [Fuzzing to find corner cases](#fuzzing-to-find-corner-cases)
+    - [Timeout - Make sure your timeout is not too short](#timeout---make-sure-your-timeout-is-not-too-short)
+- [Inter-test flakiness](#inter-test-flakiness)
+    - [Test order dependency](#test-order-dependency)
+        - [State pollution by incorrect mocking/monkey-patching](#state-pollution-by-incorrect-mockingmonkey-patching)
+        - [Database state pollution](#database-state-pollution)
+- [External factors](#external-factors)
     - Network
     - File system
+
+
+Note: I pulled the above categorization from the paper [Surveying the developer experience of flaky tests](https://www.gregorykapfhammer.com/download/research/papers/key/Parry2022-paper.pdf) by Owain Parry, Gregory M. Kapfhammer, Michael Hinton and Phil McMinn.
 
 
 ## Intra-Test Flakiness 
@@ -240,7 +243,7 @@ x_64 = 262_145.015625
 x_32 = np.float32(x_64 - 1)
 x_64 - x_32 == 1
 ```
-The outcome is now False - because in laymen terms beyond 2^18 (262,144) the float32 data type cannot maintain a precision of 1/64 (0.015625).
+The outcome is now False - because in laymen terms beyond 2^18 (262,144) the float32 data type can no longer maintain a precision of 1/64 (0.015625).
 
 #### Underflow or overflow issues
 
@@ -599,81 +602,38 @@ def test_we_are_back_in_the_90s(monkeypatch):
     assert result.year == 1990
 ```
 
-
-
-#### Incorrect scoping of fixtures
-
-In some cases, developers might chose to provide wider-scoped fixtures to speed up the test suite. However, this can lead to inter-test flakiness.
-
-This is an almost contrived example of how a fixture that is scoped to the module can lead to flakiness.
-
-```python
-import pytest
-
-class TicTacToeSimulation:
-    def __init__(self):
-        self.board = [[" " for _ in range(3)] for _ in range(3)]
-        self.current_player = "X"
-        self.moves_made = 0
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        if self.moves_made < 9:
-            self.moves_made += 1
-            return self
-        raise StopIteration
-
-    def make_move(self, row, col):
-        if self.board[row][col] == " ":
-            self.board[row][col] = self.current_player
-            self.current_player = "O" if self.current_player == "X" else "X"
-
-    def get_board(self):
-        return self.board
-
-@pytest.fixture(scope="module")
-def tic_tac_toe_simulation():
-    return TicTacToeSimulation()
-
-def test_player_moves(tic_tac_toe_simulation):
-    for _ in tic_tac_toe_simulation:
-        tic_tac_toe_simulation.make_move(0, 0)
-    board = tic_tac_toe_simulation.get_board()
-    assert board == [["X", " ", " "], [" ", " ", " "], [" ", " ", " "]]
-
-def test_winning_move(tic_tac_toe_simulation):
-    for _ in tic_tac_toe_simulation:
-        tic_tac_toe_simulation.make_move(0, 0)
-        tic_tac_toe_simulation.make_move(0, 1)
-        tic_tac_toe_simulation.make_move(1, 0)
-        tic_tac_toe_simulation.make_move(1, 1)
-        tic_tac_toe_simulation.make_move(2, 0)
-    board = tic_tac_toe_simulation.get_board()
-    assert board == [["X", "X", " "], ["O", "O", " "], ["X", " ", " "]]
-```
-
-In this example, we have a test that checks if the first value of an iterator is 1. We also have another test that checks if the iterator consumes values.
-
-The first test is flaky because the iterator fixture is scoped to the module. This means that the iterator is shared between tests. 
-
 #### Database state pollution
 
 Improper isolation of database state can lead to inter-test flakiness. Consider the following:
 
 ```python
+# ----------------------------------
+# Implementation - create_user.py
+# ----------------------------------
 import pytest
+
+class CreateUserAction:
+    def __init__(self, name):
+        self.name = name
+
+    def run(self, db):
+        with db.conn as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"INSERT INTO test_users_table (name) VALUES ('{self.name}');"
+                )
+
+# ----------------------------------
+# test suite - conftest.py
+# ----------------------------------
+import os
 import psycopg2
 
-
 class TestDatabase:
-    def __init__(self, host="localhost", port=5432, name="postgres"):
-        self.conn = psycopg2.connect(
-            host=host,
-            port=port,
-            dbname=name,
-        )
+    def __init__(self, db_url=None):
+        if db_url is None:
+            db_url = os.environ["TEST_DATABASE__URL"]
+        self.conn = psycopg2.connect(db_url)
 
     def setup(self):
         with self.conn as conn:
@@ -686,19 +646,7 @@ class TestDatabase:
         self.conn.close()
 
 
-class CreateUserAction:
-    def __init__(self, name: str):
-        self.name = name
-
-    def __call__(self, db: TestDatabase):
-        with db.conn as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"INSERT INTO test_users_table (name) VALUES ('{self.name}');"
-                )
-
-
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def db():
     db = TestDatabase()
     db.setup()
@@ -706,13 +654,18 @@ def db():
     db.teardown()
 
 
+# ----------------------------------
+# test suite - test_create_user.py
+# ----------------------------------
+
 def test_create_user_action(db):
     with db.conn as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM test_users_table;")
             count_before_adding_users = cur.fetchone()[0]
 
-    CreateUserAction(name="Alice")(db)
+    action = CreateUserAction(name="Alice")
+    action.run(db)
 
     with db.conn as conn:
         with conn.cursor() as cur:
@@ -722,7 +675,86 @@ def test_create_user_action(db):
     assert count_after_adding_users == count_before_adding_users + 1
 ```
 
-### In software engineering, everything is a trade-off
+This test is flaky because it does not properly isolate the database state. 
+
+More specifically, let's think of what happens when more than one process is running this test suite. This is a common scenario in CI pipelines where multiple workflows are running the same test suite.
+
+Given that the database is not properly isolated, the following sequence of events could occur:
+- Process 1 runs on machine 1 and executes the test `test_create_user_action` - it triggers the creation of a user named Alice
+- Process 2 runs on machine 2 almost at the same time and it executes the test `test_create_user_action` - it triggers the creation of a user named Alice right before Process 1 checks the number of users in the database
+- Process 1 checks the number of users in the database and finds that `count_after_adding_users == count_before_adding_users + 1` is False and the test fails
+
+Now you will have to be awfully unlucky for this to happen. However, it is not impossible and becomes more likely as the test suite grows in size and as the number of processes running the test suite increases.
+
+To fix this, we can resort to using temporary tables to isolate the database state. This way, each test will have its own temporary testing table to work with and the database state will be properly isolated.
+
+```python
+...
+# ----------------------------------
+# test suite - conftest.py
+# ----------------------------------
+import os
+import psycopg2
+
+class TestDatabase:
+    def __init__(self, db_url=None):
+        if db_url is None:
+            db_url = os.environ["TEST_DATABASE__URL"]
+        self.conn = psycopg2.connect(db_url)
+
+    def setup(self):
+        with self.conn as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "CREATE TEMPORARY TABLE IF NOT EXISTS test_users_table (name VARCHAR(255));"
+                )
+
+    def teardown(self):
+        self.conn.close()
+
+@pytest.fixture(scope="function")
+def db():
+    db = TestDatabase()
+    db.setup()
+    yield db
+    db.teardown()
+```
+
+A temporary table is a table that is automatically dropped at the end of a session. This means that each database connection will have its own temporary table to work with and the database state will be properly isolated. 
+
+Note that I also changed the fixture scope to function so if we have multiple tests modifying the `test_users_table` they will not interfere with each other when run in parallel.
+
+
+## External Factors
+
+External factors of flakiness are factors that are outside of the control of the test suite. They are factors that are not related to the implementation of the test suite nor the implementation of the code under test.
+
+### Network issues
+
+Network issues can lead to flakiness. For example, if your test suite is making requests to an external API, it is possible that the API is down or that the network is down. This can lead to flakiness.
+
+```python
+# ----------------------------------
+# implementation - query_example.py
+# ----------------------------------
+import requests
+
+def query_web_server():
+    response = requests.get("https://example.com")
+    return response.status_code
+
+# ----------------------------------
+# test suite - test_query_example.py
+# ----------------------------------
+def test_query_web_server():
+    status_code = query_web_server()
+    assert status_code == 200, f"Expected status code 200, but got {status_code}"
+```
+
+It is worth noting that there is a pytest plugin called [pytest-socket](https://pypi.org/project/pytest-socket/) that can be used to disable socket calls during tests.
+
+
+#### In software engineering, everything is a trade-off
 
 When it comes to software testing, there is no silver bullet. There are always trade-offs to be made. For example, when writing tests, you can choose to write tests that are fast or tests that are reliable. You can't have both. Reliable tests necessitate more developer time and longer test-run times. Developer productivity and efficiency of testing process.
 
