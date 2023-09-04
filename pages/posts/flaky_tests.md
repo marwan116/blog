@@ -7,9 +7,9 @@ author: Marwan
 ---
 
 # Intro
-I am writing this article after listening to a [talk python](https://talkpython.fm/) podcast episode titled "Taming Flaky Tests" where Michael Kennedy, the host of the podcast, interviewed [Gregory M. Kapfhammer](https://www.gregorykapfhammer.com/), an Associate Professor in the Department of Computer Science at Allegheny College, and [Owain Parry](https://www.linkedin.com/in/owain-parry-a0040a216), a Computer Science PhD student at the University of Sheffield whose research focuses on software testing. 
+I am writing this article after listening to a [talk python](https://talkpython.fm/) podcast episode titled "Taming Flaky Tests" where Michael Kennedy, the host of the podcast, interviewed [Gregory M. Kapfhammer](https://www.gregorykapfhammer.com/) and [Owain Parry](https://www.linkedin.com/in/owain-parry-a0040a216)to discuss their research on software testing.
 
-My hope is to supplement the article by sharing war stories of flaky tests I have encountered in the wild and by providing concrete examples of how to detect them and avoid them. 
+My hope is to supplement the podcast by sharing war stories of flaky tests similiar to those I have encountered in the wild and by providing concrete examples of how to detect them and avoid them. 
 
 # Outline
 
