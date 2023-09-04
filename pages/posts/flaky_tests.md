@@ -1,24 +1,24 @@
 ---
-title: "A showcase of Flaky Tests: How not to footgun yourself when writing tests"
+title: "How not to footgun yourself when writing tests - a showcase of flaky tests"
 date: 2023/08/15
-description: Valuable learnings about flaky tests inspired by a talk python podcast titled "Taming Flaky Tests"
+description: Hard-earned learnings about flaky tests inspired by a talk-python podcast titled "Taming Flaky Tests"
 tag: testing, python, pytest
 author: Marwan
 ---
 
 # Intro
-This article is primarily inspired by a [talk python](https://talkpython.fm/) podcast episode titled "Taming Flaky Tests" where Michael Kennedy, the host of the podcast, interviewed [Gregory M. Kapfhammer](https://www.gregorykapfhammer.com/), an Associate Professor in the Department of Computer Science at Allegheny College, and [Owain Parry](https://www.linkedin.com/in/owain-parry-a0040a216), a Computer Science PhD student at the University of Sheffield whose research focuses on software testing. 
+I am writing this article after listening to a [talk python](https://talkpython.fm/) podcast episode titled "Taming Flaky Tests" where Michael Kennedy, the host of the podcast, interviewed [Gregory M. Kapfhammer](https://www.gregorykapfhammer.com/), an Associate Professor in the Department of Computer Science at Allegheny College, and [Owain Parry](https://www.linkedin.com/in/owain-parry-a0040a216), a Computer Science PhD student at the University of Sheffield whose research focuses on software testing. 
 
-To avoid this article from being a simple regurgitation of the transcript of the podcast episode, I focus on providing code examples (hopefully not too contrived) to illustrate some of the main concepts mentioned in the episode or in the show notes. 
+My hope is to supplement the article by sharing war stories of flaky tests I have encountered in the wild and by providing concrete examples of how to detect them and avoid them. 
 
-# Table of Contents
+# Outline
 
-Here is the table of contents covering the different types of flaky tests that will be covered in this article:
+I outline the different types of flaky tests by borrowing a categorization from the paper discussed in the podcast [Surveying the developer experience of flaky tests](https://www.gregorykapfhammer.com/download/research/papers/key/Parry2022-paper.pdf) by Owain Parry, Gregory M. Kapfhammer, Michael Hinton and Phil McMinn.
 
 - [Intra-test flakiness](#intra-test-flakiness)
     - [Concurrency - The GIL won't save you](#concurrency---the-gil-wont-save-you)
     - [Randomness](#randomness)
-        - [Algorithmic non-determinism](#algorithmic-non-determinism)
+        - [Algorithmic non-determinism](#algorithmic-non-determinism--careful-with-your-tolerance-values)
     - [Floating point arithmetic](#floating-point-arithmetic)
         - [Underflow or overflow issues](#underflow-or-overflow-issues)
         - [Loss in precision](#loss-in-precision)
@@ -30,21 +30,16 @@ Here is the table of contents covering the different types of flaky tests that w
         - [State pollution by incorrect mocking/monkey-patching](#state-pollution-by-incorrect-mockingmonkey-patching)
         - [Database state pollution](#database-state-pollution)
 - [External factors](#external-factors)
-    - Network
-    - File system
-
-
-Note: I pulled the above categorization from the paper [Surveying the developer experience of flaky tests](https://www.gregorykapfhammer.com/download/research/papers/key/Parry2022-paper.pdf) by Owain Parry, Gregory M. Kapfhammer, Michael Hinton and Phil McMinn.
-
+    - [Network](#network)
 
 ## Intra-Test Flakiness 
-Intra-test generally means flakiness stemming from a single test and not due to the interference of other tests or due to the interference of external factors like the network or the file system.
+Intra-test means the flakiness stems from how a given test is implemented and not due to the interference of other tests or due to the interference of external factors like the network or the file system.
 
 ### Concurrency - The GIL won't save you
 
-First up is an example of a test that is attempting to make use of concurrency to speed up the test run time only to shoot itself in the foot by introducing flakiness.
+First up is an example of a test where I attempt to make use of concurrency to speed up the test run's time only to shoot myself in the foot by introducing flakiness.
 
-Can you spot the problem with this test example? Hint: always think twice before reaching out to the threading module to speed up your test suite.
+Can you spot the problem with this test example? Hint: always think twice before reaching out to the `threading` module to speed up your test suite.
 
 ```python
 # ----------------------------------
@@ -62,10 +57,10 @@ class BankAccount:
 
 
 class Merchant:
-    def check_account_by_charging_and_refunding_small_amounts(
-        self, account, test_fee=0.01, num_checks=400
+    def charge_and_refund(
+        self, account, test_fee=0.01, num_transactions=400
     ):
-        for _ in range(num_checks):
+        for _ in range(num_transactions):
             account.withdraw(test_fee)
             account.deposit(test_fee)
 
@@ -81,11 +76,11 @@ def test_charge_and_refund_keeps_the_balance_the_same():
 
     threads = []
 
-    # "smartly" parallelize the call to check_account_by_charging_and_refunding_small_amounts
+    # "smartly" parallelize the call to charge_and_refund
     merchants = [Merchant() for _ in range(10)]
     for merchant in merchants:
         thread = threading.Thread(
-            target=merchant.check_account_by_charging_and_refunding_small_amounts,
+            target=merchant.charge_and_refund,
             args=(account,),
         )
         threads.append(thread)
@@ -97,21 +92,21 @@ def test_charge_and_refund_keeps_the_balance_the_same():
     assert account.balance == original_balance
 ```
 
-This test is flaky because the `BankAccount` implementation is not thread-safe. This is because access to the `balance` attribute is not protected by a lock meaning that multiple threads can concurrently access and modify the balance attribute.
+This test is flaky because the `BankAccount` implementation is not thread-safe. This is because access to the `balance` attribute is not protected by a lock meaning that multiple threads can concurrently access and modify the balance attribute. 
 
-More specifically, in the above test, multiple threads concurrently call the `check_account_by_charging_and_refunding_small_amounts` function, which performs a series of BankAccount `withdraw` and BankAccount `deposit` operations.
+More specifically, in the above test, multiple threads concurrently call `merchant.charge_and_refund` which performs a series of BankAccount `withdraw` and BankAccount `deposit` operations.
 
-Threads may interleave in a way that one thread runs `deposit` while another thread runs `withdraw` at the same time.
+But wait a minute, shouldn't the GIL (Global Interpreter Lock) save us from this concurrency issue? The GIL contrary to "popular fallacy" does not provide atomicity or synchronization guarantees for complex operations involving multiple bytecode instructions. 
 
-The GIL contrary to "popular fallacy" does not provide atomicity or synchronization guarantees for complex operations involving multiple bytecode instructions. 
+What I mean here is that the GIL will cause threads to interleave but they can still interleave in a way that one thread runs `deposit` while another thread runs `withdraw` at the same time. 
 
-To ensure thread safety in scenarios like this, you would need to use proper synchronization mechanisms like locks to protect critical sections of code, ensuring that only one thread can modify shared data at a time.
+To ensure thread safety in scenarios like this, you would need to use proper synchronization mechanisms like locks and sempahores to protect shared state in your code, ensuring that only one thread can modify shared data at a time.
 
-Pro tip, if you want to make it more likely that your test suite will catch this concurrency issue, it is recommended you:
+**Tip** if you want to increase the likelihood of your test suite catching concurrency issues, it is recommended you:
 - set a smaller switch interval to force the interpreter to switch between threads more frequently
-- run your test a reasonably large number of times 
+- run your test more than once
 
-i.e. see the example below:
+i.e. Something like this:
 
 ```python
 # test suite - test_bank_account.py
@@ -132,22 +127,33 @@ if __name__ == "__main__":
         sys.setswitchinterval(original_switch_interval)
 ```
 
-Note that the switch interval is a global setting and as such it will affect the entire test suite if you modify it before running more tests. As such, it is recommended that you reset the switch interval to its original value to check your specific test.
+If you want to avoid writing boilerplate code for running your test multiple times, you can use the [pytest-repeat](https://pypi.org/project/pytest-repeat/) plugin.
 
+Additionaly, you can create a pytest fixture to alter the switch interval of the test (note however that you are still modifying the switch interval for the entire test suite given the sys module is global)
+
+```python
+@pytest.fixture
+def fast_switch_interval():
+    original = sys.getswitchinterval()
+    sys.setswitchinterval(0.0001)
+    try:
+        yield
+    finally:
+        sys.setswitchinterval(original)
+```
 For more details on the switch interval, see this article from [superfastpython](https://superfastpython.com/context-switch-interval-in-python/#Why_Change_the_Switch_Interval)
 
 ### Randomness
 
-Introducing randomness into test inputs offers some benefits. It can help you test a wider range of inputs and it can help you avoid biasing your tests towards a specific input. However, it can also lead to flakiness if it is not properly handled.
+Introducing randomness when constructing test inputs offers some benefits. It can help you test a wider range of inputs and avoid biasing your tests towards a specific input. However, it can also lead to flakiness if it is not properly handled.
 
-#### Algorithmic non-determinism
+#### Algorithmic non-determinism - careful with your tolerance values
 
-Let's start with an example of what could be considered algorithmic non-determinism. 
+This is an example of a test I would have written to check the outputs of an optimization algorithm. This is a common scenario where you want to make sure that the output of the algorithm is within a reasonable range of the expected output.
 
-Consider the following:
+Consider the following example, can you spot the problem?
 
 ```python
-
 # ----------------------------------
 # implementation - minimze_rosenbrock.py
 # ----------------------------------
@@ -181,13 +187,15 @@ def test_correctly_minimizes_rosenbrock():
 
 This test is flaky because the chosen `Nelder-Mead` minimization algorithm is not always guaranteed to converge to the same true minimum - i.e. the algorithm is not deterministic.
 
-More specifically, in this example we are using `Nelder-Mead` to minimize the `rosenbrock` function, also referred to as the Valley or Banana function, which is a popular test problem for minimization algorithms. The function is unimodal, and the global minimum lies in a narrow, parabolic valley. The narrow valley makes it somewhat difficult for the algorithms to converge exactly to the true minimum (1, 1) given different starting points.
+More specifically, in this example I am using `Nelder-Mead` to minimize the `rosenbrock` function, also referred to as the Valley or Banana function, which is a popular test problem for minimization algorithms. The function is unimodal, and the global minimum lies in a narrow, parabolic valley. The narrow valley makes it somewhat difficult for the algorithms to converge exactly to the true minimum (1, 1) given different starting points.
 
-In this case, the tester, knowing that the `Nelder-Mead` will only offer an approximate value of the true minimum, chose a "naive" tolerance value of 1e-5 without proper consideration to the expected variation in the result of the optimization algorithm (the hand-waving here might be that well 1e-5 is a relatively large tolerance value compared to what I tried before and it makes the test pass when I run it on my machine).
+In this case, the tester, knowing that the `Nelder-Mead` will only offer an approximate value of the true minimum, chose a "naive" tolerance value of 1e-5 without proper consideration to the expected variation in the result of the optimization algorithm.
+
+I must admit it is hard not to succumb to the tendency to hand-wave tolerance/epsilon values. It usually goes something like this: "Well 1e-5 is a relatively large tolerance value compared to what I tried before and it now makes the test pass when I run it on my machine so it should be good enough".
 
 Turns out the chosen tolerance value of 1e-5 makes the test flaky fail almost 65% of the time given the initial guess is randomly chosen from the range 0 to 10. Important to note here that while too small a tolerance value leads to false alarms, naively solving this issue by updating to a very large tolerance value means that the test is not sensitive enough to detect when the result is not within a statistically reasonable range.
 
-To remedy this, we assess the variance of the results of running the `Nelder-Mead` algorithm multiple times. Then we chose the tolerance to be 3 standard deviations from the mean. This way, we can be 99.7% confident (assuming the results are normally distributed) that the test will pass (not too permissive, not too strict). 
+To remedy this, we should assess the expected variance of the results of running the `Nelder-Mead` algorithm multiple times. Then we can chose an informed tolerance (in this example I take 3 standard deviations from the mean - tis way, we can be 99.7% confident, assuming the results are normally distributed, that the test will pass - not too permissive, not too strict). 
 
 The updated test looks like this:
 
@@ -221,9 +229,11 @@ def test_correctly_minimizes_rosenbrock():
 
 ### Floating point arithmetic
 
-Dealing with floating point arithmetic can be tricky. For instance, it is a common practice to resort to using 32-bit data types like float32 and int32 to save memory especially when dealing with large arrays of data (i.e. in pandas or numpy). However, this can be the source of test flakiness if you are not careful.
+Dealing with floating point arithmetic can be tricky. 
 
-Let's start with a tricky question inspired by the lovely article ["The problem with float32: you only get 16 million values" on pythonspeed.com](https://pythonspeed.com/articles/float64-float32-precision/)
+On many occassions, I have resorted to using 32-bit data types like float32 and int32 to save memory especially when dealing with large arrays of data (i.e. in pandas or numpy). However, this can be a source of test flakiness if you are not careful.
+
+Let's start with a tricky question:
 
 True or false - guess the outcome?
 ```python
@@ -243,90 +253,51 @@ x_64 = 262_145.015625
 x_32 = np.float32(x_64 - 1)
 x_64 - x_32 == 1
 ```
-The outcome is now False - because in laymen terms beyond 2^18 (262,144) the float32 data type can no longer maintain a precision of 1/64 (0.015625).
+The outcome is now False - because in laymen terms beyond 2^18 (262,144), the float32 data type can no longer maintain a precision of 1/64 (0.015625). To learn more about this, I highly recommend reading the article ["The problem with float32: you only get 16 million values" on pythonspeed.com](https://pythonspeed.com/articles/float64-float32-precision/)
 
-#### Underflow or overflow issues
-
-Consider the following test showcasing an overflow issue when using np.int32:
-
-```python
-import pytest
-import numpy as np
-
-def compute_eng_balance(all_expenses, is_eng_dept):
-    total_eng_budget = np.int32(0)
-    for balance, is_eng in zip(all_expenses, is_eng_dept):
-        if is_eng:
-            total_eng_budget += balance
-    return total_eng_budget
-
-def test_eng_balance_is_correctly_computed():
-    eng_dept_cost = 1_600_000_000
-    non_eng_dept_cost = 1_400_000_000
-
-    num_dept = 10
-    num_eng_dept = np.random.randint(1, num_dept)
-    num_non_eng_dept = num_dept - num_eng_dept
-    is_eng_dept = np.array(
-        [True] * num_eng_dept + [False] * num_non_eng_dept, dtype="bool"
-    )
-    all_expenses = np.array(
-        [eng_dept_cost] * num_eng_dept + [non_eng_dept_cost] * num_non_eng_dept, dtype=np.int32
-    )
-    total_eng_budget = compute_eng_balance(all_expenses, is_eng_dept)
-    assert np.isclose(total_eng_budget, eng_dept_cost * num_eng_dept)
-```
-
-We check if the total engineering budget computed by summing up the balances of all engineering departments is equal to the total engineering budget computed by multiplying the engineering department cost by the number of engineering departments.
-
-This test is flaky due to an overflow in np.int32 - more specifically the maximum value for np.int32 is 2,147,483,647 - which can be verified by running the following code in a python interpreter:
-
-```python
-In [1]: import numpy as np
-
-In [2]: np.iinfo(np.int32).max
-Out[2]: 2147483647
-```
-
-Given 1 engineering department with a cost of 1.6 billion still smaller than the max value of np.int32 ~2.1 billion, the test passes. However, given 2 engineering departments with a cost of 1.6 billion, the test fails due to an overflow in np.int32.
-
-This can be fixed by making our implementation more robust to overflow either by using a larger data type like np.int64 or by forcing an overflow error to be raised. 
-
-The latter can be achieved by using np.seterr to set the overflow error to be raised. 
-
-```python
-def compute_eng_balance(all_expenses, is_eng_dept):
-    np.seterr(over="raise")
-    ...
-```
-
-In general, when dealing with billions, one has to make the conscious decision to use a larger data type like np.int64 or np.float64.
 
 #### Loss in precision
 
-One might think that switching to a floating point data type like np.float32 would solve the problem of overflow without having to pay the cost of using a larger data type like np.int64. However, a different problem arises when using floating point data types - loss in precision.
+So how does this relate to test flakiness? Well, let's consider the following example and see if you can spot the problem:
 
 ```python
+# ----------------------------------
+# implementation - compute_balance.py
+# ----------------------------------
+import numpy as np
+
+
+def compute_balance(amount, includes_flag):
+    total_balance = np.float32(0)
+    for amount, include_flag in zip(amount, includes_flag):
+        if include_flag:
+            total_balance += amount
+    return total_balance
+
+
+# ----------------------------------
+# test suite - test_compute_balance.py
+# ----------------------------------
 def test_balance_zeros_out():
-    eng_dues = np.random.choice(
-        [1_600_000_000, 1_630_000_000]
-    )
+    dept_expense = 1_630_000_000
     num_dept = 10
-    usd_balance = np.array([eng_dues] * 10, dtype=np.float32)
+    num_eng_dept = np.random.randint(1, num_dept)
+    num_non_eng_dept = num_dept - num_eng_dept
 
-    num_eng = np.random.randint(1, num_dept)
-    num_non_eng = num_dept - num_eng
-    is_eng_dept = np.array([True] * num_eng + [False] * num_non_eng, dtype="bool")
+    total_expenses = np.array([dept_expense] * num_dept, dtype=np.float32)
+    is_eng_dept = np.array(
+        [True] * num_eng_dept + [False] * num_non_eng_dept, dtype="bool"
+    )
 
-    remaining_eng_spend = np.float32(eng_dues * num_eng)
-    for balance, is_eng in zip(usd_balance, is_eng_dept):
-        if is_eng:
-            remaining_eng_spend -= balance
-
-    assert np.isclose(remaining_eng_spend, 0)
+    computed_total_eng_spend = compute_balance(total_expenses, is_eng_dept)
+    expected_total_eng_spend = dept_expense * num_eng_dept
+    diff = computed_total_eng_spend - expected_total_eng_spend
+    assert np.isclose(diff, 0)
 ```
 
-In this example, we check if the remaining engineering spend is equal to 0. We will define a `precise_float32` to help us illustrate the problem.
+In this example, we build a test that checks if the total engineering spend computed by running `compute_balance` which sums up the balances of all engineering departments is equal to the total engineering spend computed by multiplying the department cost by the number of engineering departments.
+
+This test is flaky due to a loss in precision when summing large numbers. I define a `precise_float32` function to check if a float32 will result in a significant loss of precision when compared to a float64.
 
 ```python
 In [1]: import numpy as np
@@ -357,13 +328,70 @@ Cell In[17], line 4, in precise_float32(value)
 ValueError: Loss of precision
 ```
 
-Other approachs to make the implementation more reliable is to resort to division and subtraction to transform large number operations into smaller number operations to avoid loss of precision or overflow issues.
+**Tip** To make an implementation more reliable, resort to division and subtraction to transform large number operations into smaller number operations to avoid loss of precision or overflow issues.
+
+#### Underflow or overflow issues
+
+Well you might be thinking, integers don't suffer from loss of precision issues. So why not use integers instead of floats? Well, you can still run into issues with integers if you are not careful. Consider the following example:
+
+```python
+import numpy as np
+
+# ----------------------------------
+# implementation - compute_balance.py
+# ----------------------------------
+def compute_balance(amount, includes_flag):
+    total_balance = np.int32(0)
+    for amount, include_flag in zip(amount, includes_flag):
+        if include_flag:
+            total_balance += amount
+    return total_balance
+
+def test_eng_balance_is_correctly_computed():
+    dept_cost = 1_600_000_000
+    num_dept = 10
+    num_eng_dept = np.random.randint(1, num_dept)
+    num_non_eng_dept = num_dept - num_eng_dept
+    
+    total_expenses = np.array([dept_cost] * num_dept, dtype=np.int32)
+    is_eng_dept = np.array(
+        [True] * num_eng_dept + [False] * num_non_eng_dept, dtype="bool"
+    )
+    
+    computed_total_eng_budget = compute_eng_balance(all_expenses, is_eng_dept)
+    expected_total_eng_budget = dept_cost * num_eng_dept
+    assert np.isclose(total_eng_budget, eng_dept_cost * num_eng_dept)
+```
+
+We check if the total engineering budget computed by summing up the balances of all engineering departments is equal to the total engineering budget computed by multiplying the engineering department cost by the number of engineering departments.
+
+This test is flaky due to an overflow in np.int32 - more specifically the maximum value for np.int32 is 2^31 (2,147,483,647) (one bit is used for the sign) - which can be verified by running the following code in a python interpreter:
+
+```python
+In [1]: import numpy as np
+
+In [2]: np.iinfo(np.int32).max
+Out[2]: 2147483647
+```
+
+Given 1 engineering department with a cost of 1.6 billion is still smaller than the max value of np.int32 ~2.1 billion, the test passes. However, given 2 engineering departments with a cost of 1.6 billion, the test fails due to an overflow in np.int32.
+
+This can be fixed by making our implementation more robust to overflow either by using a larger data type like np.int64 or by forcing an overflow error to be raised when we run our test.
+
+The latter can be achieved by using np.seterr to set the overflow error to be raised like so:
+
+```python
+def compute_eng_balance(all_expenses, is_eng_dept):
+    np.seterr(over="raise")
+    ...
+```
+
 
 ### Missing corner cases (test is too restrictive)
 
 Sometimes, a test is too restrictive and does not account for all possible corner cases. This can lead to flakiness.
 
-Consider the following:
+Here I show some sample pandas code that attempts to stack and unstack a dataframe. Can you spot the problem?
 
 ```python
 import pytest
@@ -434,10 +462,7 @@ class FrameStacker:
 
 #### Fuzzing to find corner cases
 
-One way to find the above-mentioned corner cases is to use fuzzing. Fuzzing is a technique where you 
-run a "testing campaign" that generates multiple random inputs against your code to find corner cases. 
-
-One common approach to fuzzing is to use a property-based testing framework like [hypothesis](https://hypothesis.readthedocs.io/en/latest/).
+One way to find the above-mentioned corner cases is to use fuzzing. Fuzzing is a technique where you intentionally generate many inputs to a function to try to find corner cases. One common approach to fuzzing is to use a property-based testing framework like [hypothesis](https://hypothesis.readthedocs.io/en/latest/).
 
 Here is an example of how you can use hypothesis to find the corner cases mentioned above:
 
@@ -460,7 +485,7 @@ This test would fail most likely fail given 100 examples are usually enough to f
 
 ### Timeout - Make sure your timeout is not too short
 
-Adding timeouts to tests can be a good way to ensure that tests do not take too long to run. However, if the timeout is too short, it can lead to flakiness.
+Adding timeouts to tests can be a good way to ensure that tests do not take too long to run. However, if the timeout is too short, it can lead to flakiness. Consider the following example:
 
 ```python
 import numpy as np
@@ -532,7 +557,7 @@ In general, tests should be independent of each other. However, sometimes test s
 
 #### State pollution by incorrect mocking/monkey-patching
 
-Mocking and monkey-patching are powerful tools that can be used to isolate tests from external dependencies. However, if not used properly, they can lead to inter-test flakiness.
+Mocking and monkey-patching are powerful tools that are often used when testing. However, if not used properly, they can lead to inter-test flakiness.
 
 In the below example, we show how improper use of monkey-patching can lead to inter-test flakiness.
 
@@ -558,6 +583,7 @@ class NewDate(datetime.date):
 
 
 def test_we_are_back_in_the_90s():
+    # let's monkey-patch datetime.date to return January 1st 1990 - what could go wrong?
     datetime.date = NewDate
     service = MyService()
     result = service.get_current_time()
@@ -567,18 +593,14 @@ def test_we_are_in_the_21st_century():
     assert datetime.date.today().year >= 2000
 ```
 
-In this example, we have a service that returns the current time. We have a test that
-checks if the current time is in the 90s. We also have another test that checks if the
-current time is in the 21st century.
+In this example, we have a service that returns the current time. We have a test that checks if the current time is in the 90s. We also have another test that checks if the current time is in the 21st century.
 
-The test `test_we_are_back_in_the_90s` introduces the flakiness because it incorrectly monkey-patches `datetime.date` to return January 1st 1990. This monkey-patching is not properly cleaned up after the test is run. 
-
-As such, the test `test_we_are_in_the_21st_century` will fail because it will be run after the first test and it will be run in the 90s.
+The test `test_we_are_back_in_the_90s` introduces the flakiness because it incorrectly monkey-patches `datetime.date` to return January 1st 1990. This monkey-patching is not properly cleaned up after the test is run. As such, the test `test_we_are_in_the_21st_century` will fail because it will be run after the first test and it will be run in the 90s.
 
 How is this flaky you might ask - if a developer runs this on their machine shouldn't they immediately get an error and fix it? Well, not necessarily.
 
 - The two tests might be in separate files and the developer might have not run the entire test suite locally (understandable for large test suites).
-- The CI pipeline might be using a plugin like `pytest-randomly` to introduce randomness in the order of tests or a plugin like `pytest-xdist` to parallelize the test runs. This means that the tests might not be run in the same order they are parsed by the test runner.
+- If `test_we_are_in_the_21st_century` is run before `test_we_are_back_in_the_90s`, it will pass. This is because the monkey-patching is not yet in effect.
 
 To fix this, we can use `unittest.mock` to achieve the same effect.
 
@@ -601,6 +623,8 @@ def test_we_are_back_in_the_90s(monkeypatch):
     result = service.get_current_time()
     assert result.year == 1990
 ```
+
+**tip** To help detect state pollution issues, you can use the [pytest-randomly](https://pypi.org/project/pytest-randomly/) plugin to run your tests in random order. This way, you can increase the likelihood of catching state pollution issues if you run your test suite multiple times with different random seeds.
 
 #### Database state pollution
 
@@ -659,19 +683,23 @@ def db():
 # ----------------------------------
 
 def test_create_user_action(db):
+    # count number of users before adding a user
     with db.conn as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM test_users_table;")
             count_before_adding_users = cur.fetchone()[0]
 
+    # add a user
     action = CreateUserAction(name="Alice")
     action.run(db)
 
+    # count number of users after adding a user
     with db.conn as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM test_users_table;")
             count_after_adding_users = cur.fetchone()[0]
 
+    # the number of users should have increased by 1 only right?
     assert count_after_adding_users == count_before_adding_users + 1
 ```
 
@@ -686,7 +714,7 @@ Given that the database is not properly isolated, the following sequence of even
 
 Now you will have to be awfully unlucky for this to happen. However, it is not impossible and becomes more likely as the test suite grows in size and as the number of processes running the test suite increases.
 
-To fix this, we can resort to using temporary tables to isolate the database state. This way, each test will have its own temporary testing table to work with and the database state will be properly isolated.
+To fix this, we can resort to using temporary tables to isolate the database state. This way, each test session will have its own temporary testing table to work with and the database state will be properly isolated.
 
 ```python
 ...
@@ -754,36 +782,8 @@ def test_query_web_server():
 It is worth noting that there is a pytest plugin called [pytest-socket](https://pypi.org/project/pytest-socket/) that can be used to disable socket calls during tests.
 
 
-#### In software engineering, everything is a trade-off
+## Wrap up
 
-When it comes to software testing, there is no silver bullet. There are always trade-offs to be made. For example, when writing tests, you can choose to write tests that are fast or tests that are reliable. You can't have both. Reliable tests necessitate more developer time and longer test-run times. Developer productivity and efficiency of testing process.
+I hope the above examples will help you spot flakiness in your test suite and hopefully move you one step closer to a more reliable test suite. Having confidence in a test suite is important and will help you and your team rest easy. 
 
-Tricks like using markers to mark slow tests to avoid hit to developer productivity could ameliorate this.
-
-### How to approach flaky tests
-
-Ignoring flaky tests or forcing re-runs of flaky tests until they pass is not always the best approach. Flaky tests could be pinpointing a weak spot in your code. They could be a symptom of a deeper problem. It is important to investigate the root cause of flaky tests and fix them.
-
-As such there is a silver lining to flaky tests. They can be used as a tool to improve the quality of your code and they can force you to think about the design of your code and the design of your tests. (e.g. if you have a flaky test due to unanticipated concurrency issues, you might want to think about how to make your code more thread-safe)
-
-### Finding flaky tests
-- Resorting to fuzzing by using a property-based testing framework like [Hypothesis](https://hypothesis.readthedocs.io/en/latest/) which generates random inputs to test your code
-- Using [pytest-randomly]() to force the running of tests in random order
-- Running a test-suite in parallel using [pytest-xdist]() to root out tests that are not properly designed to run in parallel
-
-
-### Learnings from big-tech companies
-
-Both google and spotify have written about their experiences with flaky tests and how they have dealt with them.
-
-- [Google](https://testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html)
-- [Spotify](https://engineering.atspotify.com/2019/11/test-flakiness-methods-for-identifying-and-dealing-with-flaky-tests/)
-
-For Google, they have a dedicated team of engineers that are responsible for monitoring and fixing flaky tests. They have a dashboard that tracks the flakiness of tests and they have a process for dealing with flaky tests. They have a policy that if a test fails 3 times in a row, it is automatically disabled and the team that owns the test is notified. The team then has 2 days to fix the test. If the test is not fixed within 2 days, it is deleted. They also have a policy that if a test fails 3 times in a row, the code that it is testing is automatically reverted. This is to prevent flaky tests from blocking the release of new code.
-
-Quarantining flaky tests is one approach to take. As long as developers are serious about revisiting the quaranteened tests - i.e. as long as it doesn't become one big trash can.
-
-Psychological impact of flaky tests - sort of like boy who cried wolf. If you have a flaky test that fails 3 times in a row, you might be tempted to ignore it the 4th time it fails. This is a dangerous mindset to have. You should always investigate the root cause of flaky tests and fix them.
-
-Trust and faith in a test-suite is important. If you have a flaky test-suite, all of a sudden it will degrade the trust and faith that developers have in the test-suite. They will be less likely to run the test-suite and they will be less likely to fix failing tests. This is a dangerous situation to be in. You want to have a test-suite that developers trust and have faith in.
-                                                                        
+Note that this not an exhaustive list of all the possible sources of flakiness. There are many more sources of flakiness that I did not cover in this article. I encourage you to read the [Surveying the developer experience of flaky tests](https://www.gregorykapfhammer.com/download/research/papers/key/Parry2022-paper.pdf) paper for a comprehensive overview.
