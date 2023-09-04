@@ -3,7 +3,7 @@ title: Model Stacking in Tensorflow
 date: 2023/05/21
 description: A guide to deterministic model stacking in Tensorflow
 tag: ml, tensorflow, python
-author: You
+author: Marwan
 ---
 
 

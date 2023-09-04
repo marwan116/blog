@@ -3,7 +3,7 @@ title: Compressing contiguous ranges
 date: 2022/11/28
 description: A simple approach to compress contiguous ranges.
 tag: algorithms, data structures, python, date wrangling
-author: You
+author: Marwan
 ---
 
 # Compressing contiguous ranges

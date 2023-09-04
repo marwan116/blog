@@ -3,7 +3,7 @@ title: Distributed Systems, Lazy Evaluation, and Static Typing
 date: 2023/04/20
 description: A detailed guide to static typing lazily evaluated python code
 tag: python, mypy
-author: You
+author: Marwan
 ---
 
 # Brief

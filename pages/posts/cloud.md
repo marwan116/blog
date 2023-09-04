@@ -3,7 +3,7 @@ title: AWS IAM management concepts and gotchas
 date: 2023/04/20
 description: A detailed guide to managing access to AWS resources using IAM.
 tag: cloud, aws
-author: You
+author: Marwan
 ---
 
 # Brief
