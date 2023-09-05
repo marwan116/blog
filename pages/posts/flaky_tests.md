@@ -1,6 +1,6 @@
 ---
 title: "How not to footgun yourself when writing tests - a showcase of flaky tests"
-date: 2023/08/15
+date: 2023/09/05
 description: Hard-earned learnings about flaky tests inspired by a talk-python podcast titled "Taming Flaky Tests"
 tag: testing, python, pytest
 author: Marwan
@@ -137,7 +137,7 @@ if __name__ == "__main__":
 To avoid writing boilerplate code for running your test multiple times, you can use the [pytest-repeat](https://pypi.org/project/pytest-repeat/) plugin.
 Worth pointing out a similar and perhaps more straightforward plugin [pytest-flakefinder](https://github.com/dropbox/pytest-flakefinder) which is meant to find flaky tests by running your test suite multiple times and comparing the results.
 
-Additionaly, you can create a pytest fixture to alter the switch interval of the test (note however that you are still modifying the switch interval for the entire test suite given the sys module is global)
+Additionaly, you can create a pytest fixture to alter the switch interval of the test
 
 ```python
 @pytest.fixture
@@ -149,7 +149,7 @@ def fast_switch_interval():
     finally:
         sys.setswitchinterval(original)
 ```
-For more details on the switch interval, see this article from [superfastpython](https://superfastpython.com/context-switch-interval-in-python/#Why_Change_the_Switch_Interval)
+Note however that you are modifying the switch interval for the entire test suite given the sys module is global... For more details on the switch interval, see this article from [superfastpython](https://superfastpython.com/context-switch-interval-in-python/#Why_Change_the_Switch_Interval)
 
 ### Randomness
 Introducing randomness when constructing test inputs offers some benefits. It can help you test a wider range of inputs and avoid biasing your tests towards a specific input. However, it can also lead to flakiness if it is not properly handled.
@@ -665,7 +665,7 @@ In this example, we have a service that returns the current time. We have a test
 
 The test `test_we_are_back_in_the_90s` introduces the flakiness because it incorrectly monkey-patches `datetime.date` to return January 1st 1990. This monkey-patching is not properly cleaned up after the test is run. As such, the test `test_we_are_in_the_21st_century` will fail because it will be run after the first test and it will be run in the 90s.
 
-How is this flaky you might ask - if a developer runs this on their machine shouldn't they immediately get an error and fix it? Well, not necessarily. The two tests might be in separate files and the developer might have not run the entire test suite locally (understandable for large test suites).
+How is this flaky you might ask - if a developer runs this on their machine shouldn't they immediately get an error and fix it? Well, not necessarily. The two tests might be in separate test modules and the developer might not run the entire test suite locally (very common for large test suites).
 
 To fix this, we can use `unittest.mock` to achieve the same effect.
 
@@ -786,7 +786,7 @@ def test_create_user_action(db):
 
 This test is flaky because it does not properly isolate the database state. 
 
-More specifically, let's think of what happens when more than one process is running the same test suite which is a common scenario in CI pipelines where multiple workflows are running in parallel.
+More specifically, let's think of what happens when more than one process is running the same test function which is a common scenario in CI pipelines where multiple workflows are running in parallel.
 
 Given that the database is not properly isolated, the following sequence of events could occur:
 - Process 1 runs on machine 1 and executes the test `test_create_user_action` - it triggers the creation of a user named Alice
@@ -818,9 +818,7 @@ class TestDatabase:
         )
         with self.conn as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    
-                )
+                cur.execute(sql)
 
     def teardown(self):
         self.conn.close()
@@ -838,7 +836,7 @@ A temporary table is a table that is automatically dropped at the end of a sessi
 Note that I also changed the fixture scope to function so if we have multiple tests modifying the `test_users_table` they will not interfere with each other when run in parallel.
 
 
-**tip** when thinking of inter-test flakiness, it is worth considering the following questions:
+**Tip on detecting inter-test flakiness** When thinking of inter-test flakiness, it is worth considering the following questions:
 - Does one test modify a shared state that another test relies on?
 - Does one test modify a shared state such that a parallel run of the same test will fail?
 
@@ -872,11 +870,13 @@ def test_query_web_server():
     )
 ```
 
-**tip** It is worth noting that there is a pytest plugin called [pytest-socket](https://pypi.org/project/pytest-socket/) that can be used to disable socket calls during tests.
+In general, it is a good idea to avoid making network calls in your test suite. However, if you must, you can resort to using a mocking library like [responses](https://pypi.org/project/responses/) to mock the network calls.
+
+**Tip on preventing network-related issues** It is worth noting that there is a pytest plugin called [pytest-socket](https://pypi.org/project/pytest-socket/) that can be used to disable socket calls during tests.
 
 
 ## Wrap up
 
-I hope the above examples will help you spot flakiness in your test suite and hopefully move you one step closer to a more reliable test suite. Having confidence in a test suite is important and will help you and your team rest easy. 
+I hope the above examples will help you spot flakiness in your test suite and move you one step closer to a more reliable test suite. Having confidence in a test suite is important and will help you and your team rest easy. 
 
-Note that this not an exhaustive list of all the possible sources of flakiness. There are many more sources of flakiness that I did not cover in this article. I encourage you to read the [Surveying the developer experience of flaky tests](https://www.gregorykapfhammer.com/download/research/papers/key/Parry2022-paper.pdf) paper for a comprehensive overview.
+To avoid this article becoming too long, I did not cover all the possible sources of flakiness. I encourage you to read the [Surveying the developer experience of flaky tests](https://www.gregorykapfhammer.com/download/research/papers/key/Parry2022-paper.pdf) paper for a comprehensive overview.
