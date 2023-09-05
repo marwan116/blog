@@ -6,15 +6,16 @@ tag: testing, python, pytest
 author: Marwan
 ---
 
-# Intro
-I am writing this article after listening to a [talk python](https://talkpython.fm/) podcast episode titled "Taming Flaky Tests" where Michael Kennedy, the host of the podcast, interviewed [Gregory M. Kapfhammer](https://www.gregorykapfhammer.com/) and [Owain Parry](https://www.linkedin.com/in/owain-parry-a0040a216)to discuss their research on software testing.
+## Intro
+I am writing this article after listening to a [talk python](https://talkpython.fm/) podcast episode titled "Taming Flaky Tests" where Michael Kennedy, the host of the podcast, interviewed [Gregory M. Kapfhammer](https://www.gregorykapfhammer.com/) and [Owain Parry](https://www.linkedin.com/in/owain-parry-a0040a216) to discuss their research on software testing.
 
-My hope is to supplement the podcast by sharing examples of flaky tests inspired by tests I have encountered in the wild and by providing concrete examples of how to detect them and avoid them.
+My hope is to supplement the podcast by sharing examples of flaky tests inspired by tests I have encountered in the wild and by providing tips of how to detect and avoid flakiness.
 
-# Outline
+## Outline
 
-I outline the different types of flaky tests by borrowing a categorization from the paper discussed in the podcast [Surveying the developer experience of flaky tests](https://www.gregorykapfhammer.com/download/research/papers/key/Parry2022-paper.pdf) by Owain Parry, Gregory M. Kapfhammer, Michael Hinton and Phil McMinn.
+I outline the different types of flaky tests by borrowing a categorization from the paper discussed in the podcast [Surveying the developer experience of flaky tests](https://www.gregorykapfhammer.com/download/research/papers/key/Parry2022-paper.pdf).
 
+- [Definition of flaky tests](#definition-of-flaky-tests)
 - [Intra-test flakiness](#intra-test-flakiness)
     - [Concurrency - The GIL won't save you](#concurrency---the-gil-wont-save-you)
     - [Randomness](#randomness)
@@ -32,8 +33,12 @@ I outline the different types of flaky tests by borrowing a categorization from 
 - [External factors](#external-factors)
     - [Network](#network)
 
+## Definition of flaky tests
+A flaky tests as defined by [pytest](https://docs.pytest.org/en/6.2.x/flaky.html) is one that exhibits intermittent or sporadic failure, that seems to have non-deterministic behaviour. Sometimes it passes, sometimes it fails, and it’s not clear why.
+
+
 ## Intra-Test Flakiness 
-Intra-test means the flakiness stems from how a given test is implemented, not due to the interference of other tests nor due to the interference of external factors like the network or the file system.
+We will begin by discussing intra-test flakiness. This type of flakiness stems from how the test is implemented. It is not due to interference from other tests or from external factors, such as network or file system disturbances.
 
 ### Concurrency - The GIL won't save you
 
@@ -58,7 +63,10 @@ class BankAccount:
 
 class Merchant:
     def charge_and_refund(
-        self, account, test_fee=0.01, num_transactions=400
+        self,
+        account,
+        test_fee=0.01,
+        num_transactions=400
     ):
         for _ in range(num_transactions):
             account.withdraw(test_fee)
@@ -69,14 +77,14 @@ class Merchant:
 # ----------------------------------
 import threading
 
-def test_charge_and_refund_keeps_the_balance_the_same():
+def test_charge_and_refund_keeps_balance_the_same():
     # initialize bank account with $100 balance
     account = BankAccount()
     original_balance = account.balance
 
     threads = []
 
-    # "smartly" parallelize the call to charge_and_refund
+    # "smartly" parallelize call to charge_and_refund
     merchants = [Merchant() for _ in range(10)]
     for merchant in merchants:
         thread = threading.Thread(
@@ -92,18 +100,14 @@ def test_charge_and_refund_keeps_the_balance_the_same():
     assert account.balance == original_balance
 ```
 
-This test is flaky because the `BankAccount` implementation is not thread-safe. This is because access to the `balance` attribute is not protected by a lock meaning that multiple threads can concurrently access and modify the balance attribute. 
+Let's start with an example of a test where an attempt was made to use concurrency to speed up the test's runtime. However, this inadvertently introduced flakiness. The problem in this test arises because the BankAccount implementation is not thread-safe. The balance attribute isn't protected by a lock, allowing multiple threads to access and modify it simultaneously.
 
-More specifically, in the above test, multiple threads concurrently call `merchant.charge_and_refund` which performs a series of BankAccount `withdraw` and BankAccount `deposit` operations.
-
-But wait a minute, shouldn't the GIL (Global Interpreter Lock) save us from this concurrency issue? The GIL contrary to "popular fallacy" does not provide atomicity or synchronization guarantees for complex operations involving multiple bytecode instructions. 
-
-What I mean here is that the GIL will cause threads to interleave but they can still interleave in a way that one thread runs `deposit` while another thread runs `withdraw` at the same time. 
+But wait a minute, shouldn't the GIL (Global Interpreter Lock) save us from this concurrency issue? The GIL contrary to "popular fallacy" does not provide atomicity or synchronization guarantees for complex operations involving multiple bytecode instructions. What I mean here is that the GIL will cause threads to interleave but they can still interleave in a way that one thread runs `deposit` while another thread runs `withdraw` at the same time. 
 
 To ensure thread safety in scenarios like this, you would need to use proper synchronization mechanisms like locks and sempahores to protect shared state in your code, ensuring that only one thread can modify shared data at a time.
 
 **Tip** if you want to increase the likelihood of your test suite catching concurrency issues, it is recommended you:
-- set a smaller switch interval to force the interpreter to switch between threads more frequently
+- set a smaller switch interval to force the python interpreter to switch between threads more frequently
 - run your test more than once
 
 i.e. Something like this:
@@ -122,12 +126,16 @@ if __name__ == "__main__":
             out = pytest.main([__file__])
             if out == pytest.ExitCode.OK:
                 passed += 1
-        print("passed_percent", passed / n_iter * 100, "%")
+        print(
+            "passed_percent",
+            passed / n_iter * 100, "%"
+        )
     finally:
         sys.setswitchinterval(original_switch_interval)
 ```
 
 If you want to avoid writing boilerplate code for running your test multiple times, you can use the [pytest-repeat](https://pypi.org/project/pytest-repeat/) plugin.
+Worth pointing out a similar and perhaps more straightforward plugin [pytest-flakefinder](https://github.com/dropbox/pytest-flakefinder) which can help you find flaky tests by running your test suite multiple times and comparing the results.
 
 Additionaly, you can create a pytest fixture to alter the switch interval of the test (note however that you are still modifying the switch interval for the entire test suite given the sys module is global)
 
@@ -166,7 +174,11 @@ def rosenbrock(x):
     return (a - x[0])**2 + b * (x[1] - x[0]**2)**2
 
 def minimize_rosenbrock(initial_guess):
-    return minimize(rosenbrock, initial_guess, method='Nelder-Mead')
+    return minimize(
+        rosenbrock,
+        initial_guess,
+        method='Nelder-Mead'
+    )
 
 # ----------------------------------
 # test suite - test_minimize_rosenbrock.py
@@ -182,7 +194,10 @@ def test_correctly_minimizes_rosenbrock():
     # naively choose atol
     naively_chosen_atol = 1e-5
 
-    assert np.all(np.isclose(result.x, [1, 1], atol=naively_chosen_atol))
+    assert np.all(
+        np.isclose(
+            result.x, [1, 1], atol=naively_chosen_atol)
+        )
 ```
 
 This test is flaky because the chosen `Nelder-Mead` minimization algorithm is not always guaranteed to converge to the same true minimum - i.e. the algorithm is not deterministic.
@@ -206,7 +221,9 @@ def estimate_tolerance(num_runs=50):
     results = []
 
     for _ in range(num_runs):
-        initial_guess = np.random.randint(0, 10, size=2)
+        initial_guess = np.random.randint(
+            0, 10, size=2
+        )
         result = minimize_rosenbrock(initial_guess)
         results.append(result.x)
 
@@ -224,7 +241,11 @@ def test_correctly_minimizes_rosenbrock():
     # tolerance is estimated from results of running minimization multiple times
     tolerance = estimate_tolerance()
 
-    assert np.all(np.isclose(result.x, [1, 1], atol=naively_chosen_atol))
+    assert np.all(
+        np.isclose(
+            result.x, [1, 1], atol=naively_chosen_atol
+        )
+    )
 ```
 
 ### Floating point arithmetic
@@ -269,8 +290,8 @@ import numpy as np
 
 def compute_balance(amount, includes_flag):
     total_balance = np.float32(0)
-    for amount, include_flag in zip(amount, includes_flag):
-        if include_flag:
+    for amount, flag in zip(amount, includes_flag):
+        if flag:
             total_balance += amount
     return total_balance
 
@@ -284,14 +305,25 @@ def test_balance_zeros_out():
     num_eng_dept = np.random.randint(1, num_dept)
     num_non_eng_dept = num_dept - num_eng_dept
 
-    total_expenses = np.array([dept_expense] * num_dept, dtype=np.float32)
+    total_expenses = np.array(
+        [dept_expense] * num_dept, dtype=np.float32
+    )
     is_eng_dept = np.array(
-        [True] * num_eng_dept + [False] * num_non_eng_dept, dtype="bool"
+        [True] * num_eng_dept +
+        [False] * num_non_eng_dept,
+        dtype="bool"
     )
 
-    computed_total_eng_spend = compute_balance(total_expenses, is_eng_dept)
-    expected_total_eng_spend = dept_expense * num_eng_dept
-    diff = computed_total_eng_spend - expected_total_eng_spend
+    computed_total_eng_spend = compute_balance(
+        total_expenses, is_eng_dept
+    )
+    expected_total_eng_spend = (
+        dept_expense * num_eng_dept
+    )
+    diff = (
+        computed_total_eng_spend -
+        expected_total_eng_spend
+    )
     assert np.isclose(diff, 0)
 ```
 
@@ -305,7 +337,9 @@ In [1]: import numpy as np
 In [2]: 
     ...: def precise_float32(value):
     ...:     tol = np.finfo(np.float32).eps
-    ...:     if np.abs(np.float32(value) - np.float64(value)) > tol:
+    ...:     if np.abs(
+    ...:        np.float32(value) - np.float64(value)
+    ...:     ) > tol:
     ...:         raise ValueError("Loss of precision")
     ...:     return np.float32(value)
     ...: 
@@ -314,16 +348,18 @@ In [21]: precise_float32(value=1.63e9 * 2)
 Out[21]: 3260000000.0
 
 In [4]: precise_float32(value=1.63e9 * 3)
----------------------------------------------------------------------------
-ValueError                                Traceback (most recent call last)
+-------------------------------------------------------
+ValueError            Traceback (most recent call last)
 Cell In[4], line 1
 ----> 1 precise_float32(value=1.63e9 * 3)
 
 Cell In[17], line 4, in precise_float32(value)
       2 tol = np.finfo(np.float32).eps
-      3 if np.abs(np.float32(value) - np.float64(value)) > tol:
-----> 4     raise ValueError("Loss of precision")
-      5 return np.float32(value)
+      3 if np.abs(
+      4  np.float32(value) - np.float64(value)
+      5  ) > tol:
+----> 6     raise ValueError("Loss of precision")
+      7 return np.float32(value)
 
 ValueError: Loss of precision
 ```
@@ -342,8 +378,8 @@ import numpy as np
 # ----------------------------------
 def compute_balance(amount, includes_flag):
     total_balance = np.int32(0)
-    for amount, include_flag in zip(amount, includes_flag):
-        if include_flag:
+    for amount, flag in zip(amount, includes_flag):
+        if flag:
             total_balance += amount
     return total_balance
 
@@ -353,14 +389,25 @@ def test_eng_balance_is_correctly_computed():
     num_eng_dept = np.random.randint(1, num_dept)
     num_non_eng_dept = num_dept - num_eng_dept
     
-    total_expenses = np.array([dept_cost] * num_dept, dtype=np.int32)
+    total_expenses = np.array(
+        [dept_cost] * num_dept, dtype=np.int32
+    )
     is_eng_dept = np.array(
-        [True] * num_eng_dept + [False] * num_non_eng_dept, dtype="bool"
+        [True] * num_eng_dept + 
+        [False] * num_non_eng_dept,
+        dtype="bool"
     )
     
-    computed_total_eng_budget = compute_eng_balance(all_expenses, is_eng_dept)
-    expected_total_eng_budget = dept_cost * num_eng_dept
-    assert np.isclose(total_eng_budget, eng_dept_cost * num_eng_dept)
+    computed_total_eng_budget = (
+        compute_eng_balance(all_expenses, is_eng_dept)
+    )
+    expected_total_eng_budget = (
+        dept_cost * num_eng_dept
+    )
+    assert np.isclose(
+        computed_total_eng_budget,
+        expected_total_eng_budget
+    )
 ```
 
 We check if the total engineering budget computed by summing up the balances of all engineering departments is equal to the total engineering budget computed by multiplying the engineering department cost by the number of engineering departments.
@@ -413,8 +460,12 @@ def data():
     """A way to mimick randomly generated data."""
     nrows = np.random.randint(0, 10)
     return pd.DataFrame({
-        "A": np.random.choices([1.0, 2.0, 3.0, np.nan], k=nrows),
-        "B": np.random.choices([1.0, 2.0, 3.0, np.nan], k=nrows),
+        "A": np.random.choices(
+            [1.0, 2.0, 3.0, np.nan], k=nrows
+        ),
+        "B": np.random.choices(
+            [1.0, 2.0, 3.0, np.nan], k=nrows
+        ),
     })
 
 
@@ -469,8 +520,16 @@ Here is an example of how you can use hypothesis to find the corner cases mentio
 ```python
 @given(data=data_frames(
     columns=[
-        column(name="A", dtype=float, elements=st.floats(allow_nan=True)),
-        column(name="B", dtype=float, elements=st.floats(allow_nan=True)),
+        column(
+            name="A",
+            dtype=float,
+            elements=st.floats(allow_nan=True)
+        ),
+        column(
+            name="B",
+            dtype=float,
+            elements=st.floats(allow_nan=True)
+        ),
     ],
 ))
 @settings(max_examples=100) 
@@ -495,17 +554,25 @@ from scipy.optimize import newton
 # implementation - find_discount_rate.py
 # ----------------------------------
 def calculate_present_value(discount_rate, cashflows):
-    return np.sum(cashflows / (1 + discount_rate) ** np.arange(1, len(cashflows) + 1))
+    t = np.arange(1, len(cashflows) + 1)
+    return np.sum(cashflows / (1 + discount_rate) ** t)
 
 
-def optimization_problem(discount_rate, present_value, cashflows):
-    return calculate_present_value(discount_rate, cashflows) - present_value
+def optimization_problem(
+    discount_rate, present_value, cashflows
+):
+    return calculate_present_value(
+        discount_rate, cashflows
+    ) - present_value
 
 
 def find_discount_rate(present_value, cashflows):
     try:
         return newton(
-            optimization_problem, x0=0.1, args=(present_value, cashflows), maxiter=1000
+            optimization_problem,
+            x0=0.1,
+            args=(present_value, cashflows),
+            maxiter=1000
         )
     except RuntimeError:
         # failed to converge
@@ -516,7 +583,8 @@ def find_discount_rate(present_value, cashflows):
 # ----------------------------------
 @pytest.mark.timeout(2)
 def test_find_discount_rate():
-    cashflows = np.random.randint(50, 300, size=360_000)
+    h = 360_000
+    cashflows = np.random.randint(50, 300, size=h)
     present_value = np.random.randint(1000, 100_000)
     find_discount_rate(present_value, cashflows)
 ```
@@ -583,7 +651,8 @@ class NewDate(datetime.date):
 
 
 def test_we_are_back_in_the_90s():
-    # let's monkey-patch datetime.date to return January 1st 1990 - what could go wrong?
+    # let's monkey-patch datetime.date
+    # what could go wrong?
     datetime.date = NewDate
     service = MyService()
     result = service.get_current_time()
@@ -597,10 +666,7 @@ In this example, we have a service that returns the current time. We have a test
 
 The test `test_we_are_back_in_the_90s` introduces the flakiness because it incorrectly monkey-patches `datetime.date` to return January 1st 1990. This monkey-patching is not properly cleaned up after the test is run. As such, the test `test_we_are_in_the_21st_century` will fail because it will be run after the first test and it will be run in the 90s.
 
-How is this flaky you might ask - if a developer runs this on their machine shouldn't they immediately get an error and fix it? Well, not necessarily.
-
-- The two tests might be in separate files and the developer might have not run the entire test suite locally (understandable for large test suites).
-- If `test_we_are_in_the_21st_century` is run before `test_we_are_back_in_the_90s`, it will pass. This is because the monkey-patching is not yet in effect.
+How is this flaky you might ask - if a developer runs this on their machine shouldn't they immediately get an error and fix it? Well, not necessarily. The two tests might be in separate files and the developer might have not run the entire test suite locally (understandable for large test suites).
 
 To fix this, we can use `unittest.mock` to achieve the same effect.
 
@@ -624,7 +690,9 @@ def test_we_are_back_in_the_90s(monkeypatch):
     assert result.year == 1990
 ```
 
-**tip** To help detect state pollution issues, you can use the [pytest-randomly](https://pypi.org/project/pytest-randomly/) plugin to run your tests in random order. This way, you can increase the likelihood of catching state pollution issues if you run your test suite multiple times with different random seeds.
+**tip** To help detect state pollution issues, you can use the [pytest-randomly](https://pypi.org/project/pytest-randomly/) plugin to run your tests in random order. This way, you can increase the likelihood of catching state pollution issues if you run your test suite multiple times with different random seeds. Worth pointing out another similar plugin [pytest-random-order](https://pypi.org/project/pytest-random-order/).
+
+Furthermore, using plugins that run your test suite in parallel like [pytest-xdist](https://pypi.org/project/pytest-xdist/) can help you catch state pollution issues. This is because running your test suite in parallel will not adhere to the order of your tests and will increase the likelihood of catching state pollution issues.
 
 #### Database state pollution
 
@@ -641,11 +709,13 @@ class CreateUserAction:
         self.name = name
 
     def run(self, db):
+        sql = (
+            "INSERT INTO test_users_table (name) "
+            f"VALUES ('{self.name}');"
+        )
         with db.conn as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    f"INSERT INTO test_users_table (name) VALUES ('{self.name}');"
-                )
+                cur.execute(sql)
 
 # ----------------------------------
 # test suite - conftest.py
@@ -660,11 +730,13 @@ class TestDatabase:
         self.conn = psycopg2.connect(db_url)
 
     def setup(self):
+        sql = (
+            "CREATE TABLE IF NOT EXISTS "
+            "test_users_table (name VARCHAR(255));"
+        )
         with self.conn as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "CREATE TABLE IF NOT EXISTS test_users_table (name VARCHAR(255));"
-                )
+                cur.execute(sql)
 
     def teardown(self):
         self.conn.close()
@@ -684,10 +756,15 @@ def db():
 
 def test_create_user_action(db):
     # count number of users before adding a user
+    count_sql = (
+        "SELECT COUNT(*) FROM test_users_table;"
+    )
     with db.conn as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM test_users_table;")
-            count_before_adding_users = cur.fetchone()[0]
+            cur.execute(count_sql)
+            count_before_adding_users = (
+                cur.fetchone()[0]
+            )
 
     # add a user
     action = CreateUserAction(name="Alice")
@@ -696,11 +773,16 @@ def test_create_user_action(db):
     # count number of users after adding a user
     with db.conn as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM test_users_table;")
-            count_after_adding_users = cur.fetchone()[0]
+            cur.execute(count_sql)
+            count_after_adding_users = (
+                cur.fetchone()[0]
+            )
 
-    # the number of users should have increased by 1 only right?
-    assert count_after_adding_users == count_before_adding_users + 1
+    # check count only incremented by 1 - right?
+    assert (
+        count_after_adding_users == 
+        count_before_adding_users + 1
+    )
 ```
 
 This test is flaky because it does not properly isolate the database state. 
@@ -731,10 +813,14 @@ class TestDatabase:
         self.conn = psycopg2.connect(db_url)
 
     def setup(self):
+        sql = (
+            "CREATE TEMPORARY TABLE IF NOT EXISTS "
+            "test_users_table (name VARCHAR(255));"
+        )
         with self.conn as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "CREATE TEMPORARY TABLE IF NOT EXISTS test_users_table (name VARCHAR(255));"
+                    
                 )
 
     def teardown(self):
@@ -755,7 +841,7 @@ Note that I also changed the fixture scope to function so if we have multiple te
 
 **tip** when thinking of inter-test flakiness, it is worth considering the following questions:
 - Does one test modify a shared state that another test relies on?
-- Does one test modify a shared state such that a parallel test will fail?
+- Does one test modify a shared state such that a parallel run of the same test will fail?
 
 
 ## External Factors
@@ -780,11 +866,14 @@ def query_web_server():
 # test suite - test_query_example.py
 # ----------------------------------
 def test_query_web_server():
-    status_code = query_web_server()
-    assert status_code == 200, f"Expected status code 200, but got {status_code}"
+    code = query_web_server()
+    assert (
+        code == 200, 
+        f"Expected status code 200, but got {code}"
+    )
 ```
 
-It is worth noting that there is a pytest plugin called [pytest-socket](https://pypi.org/project/pytest-socket/) that can be used to disable socket calls during tests.
+**tip** It is worth noting that there is a pytest plugin called [pytest-socket](https://pypi.org/project/pytest-socket/) that can be used to disable socket calls during tests.
 
 
 ## Wrap up
