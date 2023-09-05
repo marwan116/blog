@@ -91,17 +91,21 @@ img.next-image {
   line-height: 1.5;
 }
 
+.nx-prose .post-item-more {
+  font-size: medium;
+}
+
 .nx-prose h1 {
-  font-size: 3.25em ;
+  font-size: 3.00em ;
 }
 
 
 .nx-prose h2 {
-  font-size: 2.75em ;
+  font-size: 2.50em ;
 }
 
 .nx-prose h3 {
-  font-size: 2.50em ;
+  font-size: 2.25em ;
 }
 
 .nx-prose h4 {
