@@ -19,7 +19,7 @@ I outline the different types of flaky tests by borrowing a categorization from 
 - [Intra-test flakiness](#intra-test-flakiness)
     - [Concurrency - The GIL won't save you](#concurrency---the-gil-wont-save-you)
     - [Randomness](#randomness)
-        - [Algorithmic non-determinism](#algorithmic-non-determinism--careful-with-your-tolerance-values)
+        - [Algorithmic non-determinism](#algorithmic-non-determinism--careful-with-tolerance-values)
     - [Floating point arithmetic](#floating-point-arithmetic)
         - [Underflow or overflow issues](#underflow-or-overflow-issues)
         - [Loss in precision](#loss-in-precision)
@@ -100,7 +100,7 @@ def test_charge_and_refund_keeps_balance_the_same():
     assert account.balance == original_balance
 ```
 
-The problem in this test arises because the `BankAccount`` implementation is not thread-safe. The balance attribute isn't protected by a lock, allowing multiple threads to access and modify it simultaneously.
+The problem in this test arises because the `BankAccount` implementation is not thread-safe. The balance attribute isn't protected by a lock, allowing multiple threads to access and modify it simultaneously.
 
 But wait a minute, shouldn't the GIL (Global Interpreter Lock) save us from this concurrency issue? The GIL contrary to "popular fallacy" does not provide atomicity or synchronization guarantees for complex operations involving multiple bytecode instructions. What I mean here is that the GIL will cause threads to interleave but they can still interleave in a way that one thread runs `deposit` while another thread runs `withdraw` at the same time. 
 
@@ -135,7 +135,7 @@ if __name__ == "__main__":
 ```
 
 If you want to avoid writing boilerplate code for running your test multiple times, you can use the [pytest-repeat](https://pypi.org/project/pytest-repeat/) plugin.
-Worth pointing out a similar and perhaps more straightforward plugin [pytest-flakefinder](https://github.com/dropbox/pytest-flakefinder) which can help you find flaky tests by running your test suite multiple times and comparing the results.
+Worth pointing out a similar and perhaps more straightforward plugin [pytest-flakefinder](https://github.com/dropbox/pytest-flakefinder) which is meant to find flaky tests by running your test suite multiple times and comparing the results.
 
 Additionaly, you can create a pytest fixture to alter the switch interval of the test (note however that you are still modifying the switch interval for the entire test suite given the sys module is global)
 
@@ -152,14 +152,12 @@ def fast_switch_interval():
 For more details on the switch interval, see this article from [superfastpython](https://superfastpython.com/context-switch-interval-in-python/#Why_Change_the_Switch_Interval)
 
 ### Randomness
-
 Introducing randomness when constructing test inputs offers some benefits. It can help you test a wider range of inputs and avoid biasing your tests towards a specific input. However, it can also lead to flakiness if it is not properly handled.
 
-#### Algorithmic non-determinism - careful with your tolerance values
+#### Algorithmic non-determinism - careful with tolerance values
+Randomness when combined with non-deterministic algorithms can lead to flakiness. This is because the output of the algorithm is not guaranteed to be the same given the same input. 
 
-This is an example of a test I would have written to check the outputs of an optimization algorithm. This is a common scenario where you want to make sure that the output of the algorithm is within a reasonable range of the expected output.
-
-Consider the following example, can you spot the problem?
+Here is a somewhat common example where I check the output of an optimization algorithm is within a reasonable range of the expected output. Can you spot the problem?
 
 ```python
 # ----------------------------------
@@ -238,7 +236,8 @@ def test_correctly_minimizes_rosenbrock():
     # Get the result of the minimization
     result = minimize_rosenbrock(initial_guess)
 
-    # tolerance is estimated from results of running minimization multiple times
+    # tolerance is estimated from results of
+    # running minimization multiple times
     tolerance = estimate_tolerance()
 
     assert np.all(
@@ -329,7 +328,7 @@ def test_balance_zeros_out():
 
 In this example, we build a test that checks if the total engineering spend computed by running `compute_balance` which sums up the balances of all engineering departments is equal to the total engineering spend computed by multiplying the department cost by the number of engineering departments.
 
-This test is flaky due to a loss in precision when summing large numbers. I define a `precise_float32` function to check if a float32 will result in a significant loss of precision when compared to a float64.
+This test is flaky due to a loss in precision when summing large numbers. To demonstrate the issue, I define a `precise_float32` function to check if a float32 will result in a significant loss of precision when compared to a float64.
 
 ```python
 In [1]: import numpy as np
