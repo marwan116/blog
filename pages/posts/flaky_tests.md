@@ -100,7 +100,7 @@ def test_charge_and_refund_keeps_balance_the_same():
     assert account.balance == original_balance
 ```
 
-Let's start with an example of a test where an attempt was made to use concurrency to speed up the test's runtime. However, this inadvertently introduced flakiness. The problem in this test arises because the BankAccount implementation is not thread-safe. The balance attribute isn't protected by a lock, allowing multiple threads to access and modify it simultaneously.
+The problem in this test arises because the `BankAccount`` implementation is not thread-safe. The balance attribute isn't protected by a lock, allowing multiple threads to access and modify it simultaneously.
 
 But wait a minute, shouldn't the GIL (Global Interpreter Lock) save us from this concurrency issue? The GIL contrary to "popular fallacy" does not provide atomicity or synchronization guarantees for complex operations involving multiple bytecode instructions. What I mean here is that the GIL will cause threads to interleave but they can still interleave in a way that one thread runs `deposit` while another thread runs `withdraw` at the same time. 
 
@@ -243,7 +243,7 @@ def test_correctly_minimizes_rosenbrock():
 
     assert np.all(
         np.isclose(
-            result.x, [1, 1], atol=naively_chosen_atol
+            result.x, [1, 1], atol=tolerance
         )
     )
 ```
