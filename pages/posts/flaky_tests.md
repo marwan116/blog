@@ -58,7 +58,10 @@ class BankAccount:
 
 class Merchant:
     def charge_and_refund(
-        self, account, test_fee=0.01, num_transactions=400
+        self,
+        account,
+        test_fee=0.01,
+        num_transactions=400
     ):
         for _ in range(num_transactions):
             account.withdraw(test_fee)
@@ -69,14 +72,14 @@ class Merchant:
 # ----------------------------------
 import threading
 
-def test_charge_and_refund_keeps_the_balance_the_same():
+def test_charge_and_refund_keeps_balance_the_same():
     # initialize bank account with $100 balance
     account = BankAccount()
     original_balance = account.balance
 
     threads = []
 
-    # "smartly" parallelize the call to charge_and_refund
+    # "smartly" parallelize call to charge_and_refund
     merchants = [Merchant() for _ in range(10)]
     for merchant in merchants:
         thread = threading.Thread(
@@ -122,7 +125,10 @@ if __name__ == "__main__":
             out = pytest.main([__file__])
             if out == pytest.ExitCode.OK:
                 passed += 1
-        print("passed_percent", passed / n_iter * 100, "%")
+        print(
+            "passed_percent",
+            passed / n_iter * 100, "%"
+        )
     finally:
         sys.setswitchinterval(original_switch_interval)
 ```
@@ -166,7 +172,11 @@ def rosenbrock(x):
     return (a - x[0])**2 + b * (x[1] - x[0]**2)**2
 
 def minimize_rosenbrock(initial_guess):
-    return minimize(rosenbrock, initial_guess, method='Nelder-Mead')
+    return minimize(
+        rosenbrock,
+        initial_guess,
+        method='Nelder-Mead'
+    )
 
 # ----------------------------------
 # test suite - test_minimize_rosenbrock.py
@@ -182,7 +192,10 @@ def test_correctly_minimizes_rosenbrock():
     # naively choose atol
     naively_chosen_atol = 1e-5
 
-    assert np.all(np.isclose(result.x, [1, 1], atol=naively_chosen_atol))
+    assert np.all(
+        np.isclose(
+            result.x, [1, 1], atol=naively_chosen_atol)
+        )
 ```
 
 This test is flaky because the chosen `Nelder-Mead` minimization algorithm is not always guaranteed to converge to the same true minimum - i.e. the algorithm is not deterministic.
@@ -206,7 +219,9 @@ def estimate_tolerance(num_runs=50):
     results = []
 
     for _ in range(num_runs):
-        initial_guess = np.random.randint(0, 10, size=2)
+        initial_guess = np.random.randint(
+            0, 10, size=2
+        )
         result = minimize_rosenbrock(initial_guess)
         results.append(result.x)
 
@@ -224,7 +239,11 @@ def test_correctly_minimizes_rosenbrock():
     # tolerance is estimated from results of running minimization multiple times
     tolerance = estimate_tolerance()
 
-    assert np.all(np.isclose(result.x, [1, 1], atol=naively_chosen_atol))
+    assert np.all(
+        np.isclose(
+            result.x, [1, 1], atol=naively_chosen_atol
+        )
+    )
 ```
 
 ### Floating point arithmetic
@@ -269,8 +288,8 @@ import numpy as np
 
 def compute_balance(amount, includes_flag):
     total_balance = np.float32(0)
-    for amount, include_flag in zip(amount, includes_flag):
-        if include_flag:
+    for amount, flag in zip(amount, includes_flag):
+        if flag:
             total_balance += amount
     return total_balance
 
@@ -284,14 +303,25 @@ def test_balance_zeros_out():
     num_eng_dept = np.random.randint(1, num_dept)
     num_non_eng_dept = num_dept - num_eng_dept
 
-    total_expenses = np.array([dept_expense] * num_dept, dtype=np.float32)
+    total_expenses = np.array(
+        [dept_expense] * num_dept, dtype=np.float32
+    )
     is_eng_dept = np.array(
-        [True] * num_eng_dept + [False] * num_non_eng_dept, dtype="bool"
+        [True] * num_eng_dept +
+        [False] * num_non_eng_dept,
+        dtype="bool"
     )
 
-    computed_total_eng_spend = compute_balance(total_expenses, is_eng_dept)
-    expected_total_eng_spend = dept_expense * num_eng_dept
-    diff = computed_total_eng_spend - expected_total_eng_spend
+    computed_total_eng_spend = compute_balance(
+        total_expenses, is_eng_dept
+    )
+    expected_total_eng_spend = (
+        dept_expense * num_eng_dept
+    )
+    diff = (
+        computed_total_eng_spend -
+        expected_total_eng_spend
+    )
     assert np.isclose(diff, 0)
 ```
 
@@ -305,7 +335,9 @@ In [1]: import numpy as np
 In [2]: 
     ...: def precise_float32(value):
     ...:     tol = np.finfo(np.float32).eps
-    ...:     if np.abs(np.float32(value) - np.float64(value)) > tol:
+    ...:     if np.abs(
+    ...:        np.float32(value) - np.float64(value)
+    ...:     ) > tol:
     ...:         raise ValueError("Loss of precision")
     ...:     return np.float32(value)
     ...: 
@@ -314,16 +346,18 @@ In [21]: precise_float32(value=1.63e9 * 2)
 Out[21]: 3260000000.0
 
 In [4]: precise_float32(value=1.63e9 * 3)
----------------------------------------------------------------------------
-ValueError                                Traceback (most recent call last)
+-------------------------------------------------------
+ValueError            Traceback (most recent call last)
 Cell In[4], line 1
 ----> 1 precise_float32(value=1.63e9 * 3)
 
 Cell In[17], line 4, in precise_float32(value)
       2 tol = np.finfo(np.float32).eps
-      3 if np.abs(np.float32(value) - np.float64(value)) > tol:
-----> 4     raise ValueError("Loss of precision")
-      5 return np.float32(value)
+      3 if np.abs(
+      4  np.float32(value) - np.float64(value)
+      5  ) > tol:
+----> 6     raise ValueError("Loss of precision")
+      7 return np.float32(value)
 
 ValueError: Loss of precision
 ```
@@ -342,8 +376,8 @@ import numpy as np
 # ----------------------------------
 def compute_balance(amount, includes_flag):
     total_balance = np.int32(0)
-    for amount, include_flag in zip(amount, includes_flag):
-        if include_flag:
+    for amount, flag in zip(amount, includes_flag):
+        if flag:
             total_balance += amount
     return total_balance
 
@@ -353,14 +387,25 @@ def test_eng_balance_is_correctly_computed():
     num_eng_dept = np.random.randint(1, num_dept)
     num_non_eng_dept = num_dept - num_eng_dept
     
-    total_expenses = np.array([dept_cost] * num_dept, dtype=np.int32)
+    total_expenses = np.array(
+        [dept_cost] * num_dept, dtype=np.int32
+    )
     is_eng_dept = np.array(
-        [True] * num_eng_dept + [False] * num_non_eng_dept, dtype="bool"
+        [True] * num_eng_dept + 
+        [False] * num_non_eng_dept,
+        dtype="bool"
     )
     
-    computed_total_eng_budget = compute_eng_balance(all_expenses, is_eng_dept)
-    expected_total_eng_budget = dept_cost * num_eng_dept
-    assert np.isclose(total_eng_budget, eng_dept_cost * num_eng_dept)
+    computed_total_eng_budget = (
+        compute_eng_balance(all_expenses, is_eng_dept)
+    )
+    expected_total_eng_budget = (
+        dept_cost * num_eng_dept
+    )
+    assert np.isclose(
+        computed_total_eng_budget,
+        expected_total_eng_budget
+    )
 ```
 
 We check if the total engineering budget computed by summing up the balances of all engineering departments is equal to the total engineering budget computed by multiplying the engineering department cost by the number of engineering departments.
@@ -413,8 +458,12 @@ def data():
     """A way to mimick randomly generated data."""
     nrows = np.random.randint(0, 10)
     return pd.DataFrame({
-        "A": np.random.choices([1.0, 2.0, 3.0, np.nan], k=nrows),
-        "B": np.random.choices([1.0, 2.0, 3.0, np.nan], k=nrows),
+        "A": np.random.choices(
+            [1.0, 2.0, 3.0, np.nan], k=nrows
+        ),
+        "B": np.random.choices(
+            [1.0, 2.0, 3.0, np.nan], k=nrows
+        ),
     })
 
 
@@ -469,8 +518,16 @@ Here is an example of how you can use hypothesis to find the corner cases mentio
 ```python
 @given(data=data_frames(
     columns=[
-        column(name="A", dtype=float, elements=st.floats(allow_nan=True)),
-        column(name="B", dtype=float, elements=st.floats(allow_nan=True)),
+        column(
+            name="A",
+            dtype=float,
+            elements=st.floats(allow_nan=True)
+        ),
+        column(
+            name="B",
+            dtype=float,
+            elements=st.floats(allow_nan=True)
+        ),
     ],
 ))
 @settings(max_examples=100) 
@@ -495,17 +552,25 @@ from scipy.optimize import newton
 # implementation - find_discount_rate.py
 # ----------------------------------
 def calculate_present_value(discount_rate, cashflows):
-    return np.sum(cashflows / (1 + discount_rate) ** np.arange(1, len(cashflows) + 1))
+    t = np.arange(1, len(cashflows) + 1)
+    return np.sum(cashflows / (1 + discount_rate) ** t)
 
 
-def optimization_problem(discount_rate, present_value, cashflows):
-    return calculate_present_value(discount_rate, cashflows) - present_value
+def optimization_problem(
+    discount_rate, present_value, cashflows
+):
+    return calculate_present_value(
+        discount_rate, cashflows
+    ) - present_value
 
 
 def find_discount_rate(present_value, cashflows):
     try:
         return newton(
-            optimization_problem, x0=0.1, args=(present_value, cashflows), maxiter=1000
+            optimization_problem,
+            x0=0.1,
+            args=(present_value, cashflows),
+            maxiter=1000
         )
     except RuntimeError:
         # failed to converge
@@ -516,7 +581,8 @@ def find_discount_rate(present_value, cashflows):
 # ----------------------------------
 @pytest.mark.timeout(2)
 def test_find_discount_rate():
-    cashflows = np.random.randint(50, 300, size=360_000)
+    h = 360_000
+    cashflows = np.random.randint(50, 300, size=h)
     present_value = np.random.randint(1000, 100_000)
     find_discount_rate(present_value, cashflows)
 ```
@@ -583,7 +649,8 @@ class NewDate(datetime.date):
 
 
 def test_we_are_back_in_the_90s():
-    # let's monkey-patch datetime.date to return January 1st 1990 - what could go wrong?
+    # let's monkey-patch datetime.date
+    # what could go wrong?
     datetime.date = NewDate
     service = MyService()
     result = service.get_current_time()
@@ -641,11 +708,13 @@ class CreateUserAction:
         self.name = name
 
     def run(self, db):
+        sql = (
+            "INSERT INTO test_users_table (name) "
+            f"VALUES ('{self.name}');"
+        )
         with db.conn as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    f"INSERT INTO test_users_table (name) VALUES ('{self.name}');"
-                )
+                cur.execute(sql)
 
 # ----------------------------------
 # test suite - conftest.py
@@ -660,11 +729,13 @@ class TestDatabase:
         self.conn = psycopg2.connect(db_url)
 
     def setup(self):
+        sql = (
+            "CREATE TABLE IF NOT EXISTS "
+            "test_users_table (name VARCHAR(255));"
+        )
         with self.conn as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    "CREATE TABLE IF NOT EXISTS test_users_table (name VARCHAR(255));"
-                )
+                cur.execute(sql)
 
     def teardown(self):
         self.conn.close()
@@ -684,10 +755,15 @@ def db():
 
 def test_create_user_action(db):
     # count number of users before adding a user
+    count_sql = (
+        "SELECT COUNT(*) FROM test_users_table;"
+    )
     with db.conn as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM test_users_table;")
-            count_before_adding_users = cur.fetchone()[0]
+            cur.execute(count_sql)
+            count_before_adding_users = (
+                cur.fetchone()[0]
+            )
 
     # add a user
     action = CreateUserAction(name="Alice")
@@ -696,11 +772,16 @@ def test_create_user_action(db):
     # count number of users after adding a user
     with db.conn as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM test_users_table;")
-            count_after_adding_users = cur.fetchone()[0]
+            cur.execute(count_sql)
+            count_after_adding_users = (
+                cur.fetchone()[0]
+            )
 
-    # the number of users should have increased by 1 only right?
-    assert count_after_adding_users == count_before_adding_users + 1
+    # check count only incremented by 1 - right?
+    assert (
+        count_after_adding_users == 
+        count_before_adding_users + 1
+    )
 ```
 
 This test is flaky because it does not properly isolate the database state. 
@@ -731,10 +812,14 @@ class TestDatabase:
         self.conn = psycopg2.connect(db_url)
 
     def setup(self):
+        sql = (
+            "CREATE TEMPORARY TABLE IF NOT EXISTS "
+            "test_users_table (name VARCHAR(255));"
+        )
         with self.conn as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "CREATE TEMPORARY TABLE IF NOT EXISTS test_users_table (name VARCHAR(255));"
+                    
                 )
 
     def teardown(self):
@@ -755,7 +840,7 @@ Note that I also changed the fixture scope to function so if we have multiple te
 
 **tip** when thinking of inter-test flakiness, it is worth considering the following questions:
 - Does one test modify a shared state that another test relies on?
-- Does one test modify a shared state such that a parallel test will fail?
+- Does one test modify a shared state such that a parallel run of the same test will fail?
 
 
 ## External Factors
@@ -780,11 +865,14 @@ def query_web_server():
 # test suite - test_query_example.py
 # ----------------------------------
 def test_query_web_server():
-    status_code = query_web_server()
-    assert status_code == 200, f"Expected status code 200, but got {status_code}"
+    code = query_web_server()
+    assert (
+        code == 200, 
+        f"Expected status code 200, but got {code}"
+    )
 ```
 
-It is worth noting that there is a pytest plugin called [pytest-socket](https://pypi.org/project/pytest-socket/) that can be used to disable socket calls during tests.
+**tip** It is worth noting that there is a pytest plugin called [pytest-socket](https://pypi.org/project/pytest-socket/) that can be used to disable socket calls during tests.
 
 
 ## Wrap up

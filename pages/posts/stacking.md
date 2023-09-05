@@ -78,12 +78,17 @@ model_weekday = tf.keras.Model(
     inputs=[input_],
     outputs=[output],
 )
-
+optimizer = tf.keras.optimizers.Adam(learning_rate=0.1)
 model_weekday.compile(
-    loss="mse", optimizer=tf.keras.optimizers.Adam(learning_rate=0.1)
+    loss="mse",
+    optimizer=optimizer
 )
 model_weekday.fit(
-    x=df_weekday["x"], y=df_weekday["delay"], epochs=500, verbose=False)
+    x=df_weekday["x"],
+    y=df_weekday["delay"],
+    epochs=500,
+    verbose=False,
+    )
 model_weekday.save("model_weekend.tf")
 
 
@@ -96,10 +101,13 @@ model_weekend = tf.keras.Model(
 )
 
 model_weekend.compile(
-    loss="mse", optimizer=tf.keras.optimizers.Adam(learning_rate=0.1)
+    loss="mse", optimizer=optimizer
 )
 model_weekend.fit(
-    x=df_weekend["x"], y=df_weekend["delay"], epochs=500, verbose=False
+    x=df_weekend["x"],
+    y=df_weekend["delay"],
+    epochs=500,
+    verbose=False,
 )
 model_weekend.save("model_weekend.tf")
 ```
@@ -149,10 +157,20 @@ class StackedModel:
         df_weekday = df[df["is_weekday"] == 1].copy()
         df_weekend = df[df["is_weekday"] == 0].copy()
         
-        df_weekday["delay"] = self.model_weekday.predict(df_weekday[["x"]])
-        df_weekend["delay"] = self.model_weekend.predict(df_weekend[["x"]])
+        df_weekday["delay"] = (
+            self.model_weekday.predict(
+                df_weekday[["x"]]
+            )
+        )
+        df_weekend["delay"] = (
+            self.model_weekend.predict(
+                df_weekend[["x"]]
+            )
+        )
         
-        df_stacked = pd.concat([df_weekday, df_weekend], axis=0).sort_index()
+        df_stacked = pd.concat(
+            [df_weekday, df_weekend], axis=0
+        ).sort_index()
         df_stacked.set_index("index", inplace=True)
         return df_stacked["delay"]
 ```
@@ -167,7 +185,9 @@ stacked_model = StackedModel(model_weekday, model_weekend)
 We prepare a sample of 10 rows to generate predictions on.
 
 ```python
-df_sample = pd.concat([df_weekday, df_weekend]).sample(n=10)
+df_sample = pd.concat(
+    [df_weekday, df_weekend]
+).sample(n=10)
 df_sample
 ```
 
@@ -210,7 +230,9 @@ is_weekday_input = tf.keras.layers.Input(
     shape=(1,), name="is_weekday", dtype=tf.float32
 )
 
-x_tensor = tf.keras.layers.Input(shape=(1,), name="x", dtype=tf.float32)
+x_tensor = tf.keras.layers.Input(
+    shape=(1,), name="x", dtype=tf.float32
+)
 
 models = [
     model_weekday_loaded,
@@ -224,7 +246,9 @@ conditions = [
 
 inputs = [is_weekday_input, x_tensor]
 outputs = []
-for idx, (model, condition) in enumerate(zip(models, conditions)):
+for idx, (model, condition) in enumerate(
+    zip(models, conditions)
+):
     # mask the input tensor(s) based on the condition
     input_masked = tf.boolean_mask(x_tensor, condition)
     # pass the masked input tensor(s) to the model
@@ -232,8 +256,12 @@ for idx, (model, condition) in enumerate(zip(models, conditions)):
     outputs.append(output)
 
 # collect the outputs into a single tensor
-stacked_output = tf.keras.layers.concatenate(outputs, axis=0)
-stacked_model = tf.keras.models.Model(inputs=inputs, outputs=stacked_output)
+stacked_output = tf.keras.layers.concatenate(
+    outputs, axis=0
+)
+stacked_model = tf.keras.models.Model(
+    inputs=inputs, outputs=stacked_output
+)
 ```
 
 We build a stacked model that takes in the `is_weekday` and `x` inputs. The input is then masked based on the `is_weekday` flag. The masked input is then passed to the weekday or weekend model depending on the `is_weekday` flag. The output of the weekday and weekend models are then concatenated and returned as a single tensor.
@@ -242,7 +270,9 @@ We build a stacked model that takes in the `is_weekday` and `x` inputs. The inpu
 We can see that the model is built correctly by plotting the model.
 ```python
 tf.keras.utils.plot_model(
-    stacked_model, to_file="stacked_model_attempt1.png", show_shapes=True
+    stacked_model,
+    to_file="stacked_model_attempt1.png",
+    show_shapes=True
 )
 ```
 ![stacked_model_attempt1.png](/images/stacked_model_attempt1.png)
@@ -271,8 +301,14 @@ df_sample
 
 ```python
 stacked_input = {
-    "x": tf.convert_to_tensor(df_stacked["x"].to_numpy(), dtype=tf.float32),
-    "is_weekday": tf.convert_to_tensor(df_stacked["is_weekday"].to_numpy(), dtype=tf.int32),
+    "x": tf.convert_to_tensor(
+        df_stacked["x"].to_numpy(),
+        dtype=tf.float32,
+    ),
+    "is_weekday": tf.convert_to_tensor(
+        df_stacked["is_weekday"].to_numpy(),
+        dtype=tf.int32,
+    ),
 }
 stacked_model.run_eagerly = False
 out = stacked_model.call(stacked_input, training=False)
@@ -298,8 +334,12 @@ We have a problem with the output of the stacked model. The output is in a diffe
 is_weekday_input = tf.keras.layers.Input(
     shape=(1,), name="is_weekday", dtype=tf.float32
 )
-index_tensor = tf.keras.layers.Input(shape=(1,), name="index", dtype=tf.int32)
-x_tensor = tf.keras.layers.Input(shape=(1,), name="x", dtype=tf.float32)
+index_tensor = tf.keras.layers.Input(
+    shape=(1,), name="index", dtype=tf.int32
+)
+x_tensor = tf.keras.layers.Input(
+    shape=(1,), name="x", dtype=tf.float32
+)
 models = [
     model_weekday_loaded,
     model_weekend_loaded,
@@ -313,11 +353,15 @@ conditions = [
 inputs = [is_weekday_input, x_tensor, index_tensor]
 outputs = []
 index_masked = []
-for idx, (model, condition) in enumerate(zip(models, conditions)):
+for idx, (model, condition) in enumerate(
+    zip(models, conditions)
+):
     # mask the input tensor(s) based on the condition
     input_masked = tf.boolean_mask(x_tensor, condition)
     # mask the index tensor based on the condition
-    index_masked.append(tf.boolean_mask(index_tensor, condition))
+    index_masked.append(
+        tf.boolean_mask(index_tensor, condition)
+    )
     # pass the masked input tensor(s) to the model
     output = model(input_masked)
     outputs.append(output)
@@ -333,7 +377,9 @@ We plot the model to verify that it is built correctly.
 
 ```python
 tf.keras.utils.plot_model(
-    stacked_model, to_file="stacked_model_attempt2.png", show_shapes=True
+    stacked_model,
+    to_file="stacked_model_attempt2.png",
+    show_shapes=True
 )
 ```
 ![stacked_model_attempt2.png](/images/stacked_model_attempt2.png)
@@ -342,12 +388,17 @@ We generate predictions using the stacked model.
 
 ```python
 stacked_input = {
-    "x": tf.convert_to_tensor(df_stacked["x"].to_numpy(), dtype=tf.float32),
+    "x": tf.convert_to_tensor(
+        df_stacked["x"].to_numpy(),
+        dtype=tf.float32,
+    ),
     "index": tf.convert_to_tensor(
-        df_stacked["index"].to_numpy(), dtype=tf.int32
+        df_stacked["index"].to_numpy(),
+        dtype=tf.int32,
     ),
     "is_weekday": tf.convert_to_tensor(
-        df_stacked["is_weekday"].to_numpy(), dtype=tf.int32
+        df_stacked["is_weekday"].to_numpy(),
+        dtype=tf.int32,
     ),
 }
 
@@ -427,8 +478,12 @@ We update the stacked model implementation to include the reordering of the pred
 is_weekday_input = tf.keras.layers.Input(
     shape=(1,), name="is_weekday", dtype=tf.float32
 )
-index_tensor = tf.keras.layers.Input(shape=(1,), name="index", dtype=tf.int32)
-x_tensor = tf.keras.layers.Input(shape=(1,), name="x", dtype=tf.float32)
+index_tensor = tf.keras.layers.Input(
+    shape=(1,), name="index", dtype=tf.int32
+)
+x_tensor = tf.keras.layers.Input(
+    shape=(1,), name="x", dtype=tf.float32
+)
 
 models = [
     model_weekday_loaded,
@@ -443,17 +498,25 @@ conditions = [
 inputs = [is_weekday_input, index_tensor, x_tensor]
 outputs = []
 index_masked = []
-for idx, (model, condition) in enumerate(zip(models, conditions)):
+for idx, (model, condition) in enumerate(
+    zip(models, conditions)
+):
     # mask the input tensor(s) based on the condition
     input_masked = tf.boolean_mask(x_tensor, condition)
     # mask the index tensor based on the condition
-    index_masked.append(tf.boolean_mask(index_tensor, condition))
+    index_masked.append(
+        tf.boolean_mask(index_tensor, condition)
+    )
     # pass the masked input tensor(s) to the model
     output = model(input_masked)
     outputs.append(output)
 
-index_after_mask = tf.keras.layers.concatenate(index_masked, axis=0)
-stacked_output = tf.keras.layers.concatenate(outputs, axis=0)
+index_after_mask = tf.keras.layers.concatenate(
+    index_masked, axis=0
+)
+stacked_output = tf.keras.layers.concatenate(
+    outputs, axis=0
+)
 stacked_output_reordered = tf.gather(
     stacked_output, tf.argsort(index_after_mask)
 )
@@ -466,7 +529,9 @@ We plot the model to verify that it is built correctly.
 
 ```python
 tf.keras.utils.plot_model(
-    stacked_model, to_file="stacked_model_attempt3.png", show_shapes=True
+    stacked_model,
+    to_file="stacked_model_attempt3.png",
+    show_shapes=True
 )
 ```
 
@@ -476,12 +541,17 @@ We generate predictions using the stacked model.
 
 ```python
 stacked_input = {
-    "x": tf.convert_to_tensor(df_stacked["x"].to_numpy(), dtype=tf.float32),
+    "x": tf.convert_to_tensor(
+        df_stacked["x"].to_numpy(),
+        dtype=tf.float32,
+    ),
     "index": tf.convert_to_tensor(
-        df_stacked["index"].to_numpy(), dtype=tf.int32
+        df_stacked["index"].to_numpy(),
+        dtype=tf.int32,
     ),
     "is_weekday": tf.convert_to_tensor(
-        df_stacked["is_weekday"].to_numpy(), dtype=tf.int32
+        df_stacked["is_weekday"].to_numpy(),
+        dtype=tf.int32,
     ),
 }
 
@@ -520,10 +590,16 @@ is_weekday_input = tf.keras.layers.Input(
     shape=(1,), name="is_weekday", dtype=tf.float32
 )
 
-x_tensor = tf.keras.layers.Input(shape=(1,), name="x", dtype=tf.float32)
+x_tensor = tf.keras.layers.Input(
+    shape=(1,),
+    name="x",
+    dtype=tf.float32,
+)
 
 index_tensor = tf.keras.layers.Lambda(
-    lambda x: tf.expand_dims(tf.range(tf.shape(x)[0]), axis=-1),
+    lambda x: tf.expand_dims(
+        tf.range(tf.shape(x)[0]
+    ), axis=-1),
 )(is_weekday_input)
 
 
@@ -540,14 +616,22 @@ conditions = [
 inputs = [is_weekday_input, x_tensor]
 outputs = []
 index_masked = []
-for idx, (model, condition) in enumerate(zip(models, conditions)):
+for idx, (model, condition) in enumerate(
+    zip(models, conditions)
+):
     input_sliced = tf.boolean_mask(x_tensor, condition)
-    index_masked.append(tf.boolean_mask(index_tensor, condition))
+    index_masked.append(
+        tf.boolean_mask(index_tensor, condition)
+    )
     output = model(input_sliced)
     outputs.append(output)
 
-index_after_mask = tf.keras.layers.concatenate(index_masked, axis=0)
-stacked_output = tf.keras.layers.concatenate(outputs, axis=0)
+index_after_mask = tf.keras.layers.concatenate(
+    index_masked, axis=0
+)
+stacked_output = tf.keras.layers.concatenate(
+    outputs, axis=0
+)
 stacked_output_reordered = tf.gather(
     stacked_output, tf.argsort(index_after_mask)
 )
@@ -560,7 +644,9 @@ We plot the model to verify that it is built correctly.
 
 ```python
 tf.keras.utils.plot_model(
-    stacked_model, to_file="stacked_model_attempt4.png", show_shapes=True
+    stacked_model,
+    to_file="stacked_model_attempt4.png",
+    show_shapes=True
 )
 ```
 
@@ -570,9 +656,13 @@ We generate predictions using the stacked model.
 
 ```python
 stacked_input = {
-    "x": tf.convert_to_tensor(df_stacked["x"].to_numpy(), dtype=tf.float32),
+    "x": tf.convert_to_tensor(
+        df_stacked["x"].to_numpy(),
+        dtype=tf.float32,
+    ),
     "is_weekday": tf.convert_to_tensor(
-        df_stacked["is_weekday"].to_numpy(), dtype=tf.int32
+        df_stacked["is_weekday"].to_numpy(),
+        dtype=tf.int32,
     ),
 }
 

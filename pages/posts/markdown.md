@@ -58,9 +58,15 @@ would then be converted into a either a series of tuples, or a pandas DataFrame:
 
 ```python
 ranges = pd.Series([
-    (pd.Period("2022-10-1", freq="D"), pd.Period("2022-10-3", freq="D")),
-    (pd.Period("2022-10-6", freq="D"), pd.Period("2022-10-6", freq="D")),
-    (pd.Period("2022-10-8", freq="D"), pd.Period("2022-10-8", freq="D"))
+    (
+        pd.Period("2022-10-1", freq="D"),
+        pd.Period("2022-10-3", freq="D")),
+    (
+        pd.Period("2022-10-6", freq="D"),
+        pd.Period("2022-10-6", freq="D")),
+    (
+        pd.Period("2022-10-8", freq="D"),
+        pd.Period("2022-10-8", freq="D"))
 ])
 ```
 

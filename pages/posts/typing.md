@@ -48,11 +48,19 @@ Out = TypeVar("Out", covariant=True)
 class TaskT(Generic[In, Out], Protocol):
     """Task Generic Protocol."""
 
-    def __call__(self, *args: In.args, **kwds: In.kwargs) -> Out:
-        """Returns a 'future-like' object that should be treated as Out by mypy."""
+    def __call__(
+        self,
+        *args: In.args,
+        **kwds: In.kwargs,
+    ) -> Out:
+        """Returns a 'future-like' Out object."""
 
-    def run(self, *args: In.args, **kwds: In.kwargs) -> Out:
-        """Runs the underlying function and returns the result."""
+    def run(
+        self,
+        *args: In.args,
+        **kwds: In.kwargs,
+    ) -> Out:
+        """Runs the underlying function."""
 
 
 def task(fn: Callable[In, Out]) -> TaskT[In, Out]:
@@ -81,18 +89,21 @@ to be valid. This can be achieved by using the `@overload` decorator to define t
 def task(
     fn: Callable[In, Out],
 ) -> TaskT[In, Out]:
-    """Return a decorator that creates a task from a function."""
+    """Return a decorator that creates a task."""
 
 
 @overload
 def task(
     fn: Literal[None] = None,
 ) -> Callable[[Callable[In, Out]], TaskT[In, Out]]:
-    """Return a decorator that creates a task from a function."""
+    """Return a decorator that creates a task."""
 
 
 def task(
     fn: Optional[Callable[In, Out]] = None,
-) -> Union[TaskT[In, Out], Callable[[Callable[In, Out]], TaskT[In, Out]]]:
+) -> Union[
+    TaskT[In, Out],
+    Callable[[Callable[In, Out]], TaskT[In, Out]]
+    ]:
 ```
 
