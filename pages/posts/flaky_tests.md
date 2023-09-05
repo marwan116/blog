@@ -7,9 +7,9 @@ author: Marwan
 ---
 
 # Intro
-I am writing this article after listening to a [talk python](https://talkpython.fm/) podcast episode titled "Taming Flaky Tests" where Michael Kennedy, the host of the podcast, interviewed [Gregory M. Kapfhammer](https://www.gregorykapfhammer.com/), an Associate Professor in the Department of Computer Science at Allegheny College, and [Owain Parry](https://www.linkedin.com/in/owain-parry-a0040a216), a Computer Science PhD student at the University of Sheffield whose research focuses on software testing. 
+I am writing this article after listening to a [talk python](https://talkpython.fm/) podcast episode titled "Taming Flaky Tests" where Michael Kennedy, the host of the podcast, interviewed [Gregory M. Kapfhammer](https://www.gregorykapfhammer.com/) and [Owain Parry](https://www.linkedin.com/in/owain-parry-a0040a216)to discuss their research on software testing.
 
-My hope is to supplement the article by sharing war stories of flaky tests I have encountered in the wild and by providing concrete examples of how to detect them and avoid them. 
+My hope is to supplement the podcast by sharing examples of flaky tests inspired by tests I have encountered in the wild and by providing concrete examples of how to detect them and avoid them.
 
 # Outline
 
@@ -33,11 +33,11 @@ I outline the different types of flaky tests by borrowing a categorization from 
     - [Network](#network)
 
 ## Intra-Test Flakiness 
-Intra-test means the flakiness stems from how a given test is implemented and not due to the interference of other tests or due to the interference of external factors like the network or the file system.
+Intra-test means the flakiness stems from how a given test is implemented, not due to the interference of other tests nor due to the interference of external factors like the network or the file system.
 
 ### Concurrency - The GIL won't save you
 
-First up is an example of a test where I attempt to make use of concurrency to speed up the test run's time only to shoot myself in the foot by introducing flakiness.
+First up is an example of a test where I attempt to make use of concurrency to speed up the test's runtime only to shoot myself in the foot by introducing flakiness.
 
 Can you spot the problem with this test example? Hint: always think twice before reaching out to the `threading` module to speed up your test suite.
 
@@ -705,7 +705,7 @@ def test_create_user_action(db):
 
 This test is flaky because it does not properly isolate the database state. 
 
-More specifically, let's think of what happens when more than one process is running this test suite. This is a common scenario in CI pipelines where multiple workflows are running the same test suite.
+More specifically, let's think of what happens when more than one process is running the same test suite which is a common scenario in CI pipelines where multiple workflows are running in parallel.
 
 Given that the database is not properly isolated, the following sequence of events could occur:
 - Process 1 runs on machine 1 and executes the test `test_create_user_action` - it triggers the creation of a user named Alice
@@ -751,6 +751,11 @@ def db():
 A temporary table is a table that is automatically dropped at the end of a session. This means that each database connection will have its own temporary table to work with and the database state will be properly isolated. 
 
 Note that I also changed the fixture scope to function so if we have multiple tests modifying the `test_users_table` they will not interfere with each other when run in parallel.
+
+
+**tip** when thinking of inter-test flakiness, it is worth considering the following questions:
+- Does one test modify a shared state that another test relies on?
+- Does one test modify a shared state such that a parallel test will fail?
 
 
 ## External Factors
