@@ -6,15 +6,16 @@ tag: testing, python, pytest
 author: Marwan
 ---
 
-# Intro
-I am writing this article after listening to a [talk python](https://talkpython.fm/) podcast episode titled "Taming Flaky Tests" where Michael Kennedy, the host of the podcast, interviewed [Gregory M. Kapfhammer](https://www.gregorykapfhammer.com/) and [Owain Parry](https://www.linkedin.com/in/owain-parry-a0040a216)to discuss their research on software testing.
+## Intro
+I am writing this article after listening to a [talk python](https://talkpython.fm/) podcast episode titled "Taming Flaky Tests" where Michael Kennedy, the host of the podcast, interviewed [Gregory M. Kapfhammer](https://www.gregorykapfhammer.com/) and [Owain Parry](https://www.linkedin.com/in/owain-parry-a0040a216) to discuss their research on software testing.
 
-My hope is to supplement the podcast by sharing examples of flaky tests inspired by tests I have encountered in the wild and by providing concrete examples of how to detect them and avoid them.
+My hope is to supplement the podcast by sharing examples of flaky tests inspired by tests I have encountered in the wild and by providing tips of how to detect and avoid flakiness.
 
-# Outline
+## Outline
 
-I outline the different types of flaky tests by borrowing a categorization from the paper discussed in the podcast [Surveying the developer experience of flaky tests](https://www.gregorykapfhammer.com/download/research/papers/key/Parry2022-paper.pdf) by Owain Parry, Gregory M. Kapfhammer, Michael Hinton and Phil McMinn.
+I outline the different types of flaky tests by borrowing a categorization from the paper discussed in the podcast [Surveying the developer experience of flaky tests](https://www.gregorykapfhammer.com/download/research/papers/key/Parry2022-paper.pdf).
 
+- [Definition of flaky tests](#definition-of-flaky-tests)
 - [Intra-test flakiness](#intra-test-flakiness)
     - [Concurrency - The GIL won't save you](#concurrency---the-gil-wont-save-you)
     - [Randomness](#randomness)
@@ -32,8 +33,12 @@ I outline the different types of flaky tests by borrowing a categorization from 
 - [External factors](#external-factors)
     - [Network](#network)
 
+## Definition of flaky tests
+A flaky tests as defined by [pytest](https://docs.pytest.org/en/6.2.x/flaky.html) is one that exhibits intermittent or sporadic failure, that seems to have non-deterministic behaviour. Sometimes it passes, sometimes it fails, and it’s not clear why.
+
+
 ## Intra-Test Flakiness 
-Intra-test means the flakiness stems from how a given test is implemented, not due to the interference of other tests nor due to the interference of external factors like the network or the file system.
+We will begin by discussing intra-test flakiness. This type of flakiness stems from how the test is implemented. It is not due to interference from other tests or from external factors, such as network or file system disturbances.
 
 ### Concurrency - The GIL won't save you
 
@@ -95,18 +100,14 @@ def test_charge_and_refund_keeps_balance_the_same():
     assert account.balance == original_balance
 ```
 
-This test is flaky because the `BankAccount` implementation is not thread-safe. This is because access to the `balance` attribute is not protected by a lock meaning that multiple threads can concurrently access and modify the balance attribute. 
+Let's start with an example of a test where an attempt was made to use concurrency to speed up the test's runtime. However, this inadvertently introduced flakiness. The problem in this test arises because the BankAccount implementation is not thread-safe. The balance attribute isn't protected by a lock, allowing multiple threads to access and modify it simultaneously.
 
-More specifically, in the above test, multiple threads concurrently call `merchant.charge_and_refund` which performs a series of BankAccount `withdraw` and BankAccount `deposit` operations.
-
-But wait a minute, shouldn't the GIL (Global Interpreter Lock) save us from this concurrency issue? The GIL contrary to "popular fallacy" does not provide atomicity or synchronization guarantees for complex operations involving multiple bytecode instructions. 
-
-What I mean here is that the GIL will cause threads to interleave but they can still interleave in a way that one thread runs `deposit` while another thread runs `withdraw` at the same time. 
+But wait a minute, shouldn't the GIL (Global Interpreter Lock) save us from this concurrency issue? The GIL contrary to "popular fallacy" does not provide atomicity or synchronization guarantees for complex operations involving multiple bytecode instructions. What I mean here is that the GIL will cause threads to interleave but they can still interleave in a way that one thread runs `deposit` while another thread runs `withdraw` at the same time. 
 
 To ensure thread safety in scenarios like this, you would need to use proper synchronization mechanisms like locks and sempahores to protect shared state in your code, ensuring that only one thread can modify shared data at a time.
 
 **Tip** if you want to increase the likelihood of your test suite catching concurrency issues, it is recommended you:
-- set a smaller switch interval to force the interpreter to switch between threads more frequently
+- set a smaller switch interval to force the python interpreter to switch between threads more frequently
 - run your test more than once
 
 i.e. Something like this:
@@ -134,6 +135,7 @@ if __name__ == "__main__":
 ```
 
 If you want to avoid writing boilerplate code for running your test multiple times, you can use the [pytest-repeat](https://pypi.org/project/pytest-repeat/) plugin.
+Worth pointing out a similar and perhaps more straightforward plugin [pytest-flakefinder](https://github.com/dropbox/pytest-flakefinder) which can help you find flaky tests by running your test suite multiple times and comparing the results.
 
 Additionaly, you can create a pytest fixture to alter the switch interval of the test (note however that you are still modifying the switch interval for the entire test suite given the sys module is global)
 
@@ -664,10 +666,7 @@ In this example, we have a service that returns the current time. We have a test
 
 The test `test_we_are_back_in_the_90s` introduces the flakiness because it incorrectly monkey-patches `datetime.date` to return January 1st 1990. This monkey-patching is not properly cleaned up after the test is run. As such, the test `test_we_are_in_the_21st_century` will fail because it will be run after the first test and it will be run in the 90s.
 
-How is this flaky you might ask - if a developer runs this on their machine shouldn't they immediately get an error and fix it? Well, not necessarily.
-
-- The two tests might be in separate files and the developer might have not run the entire test suite locally (understandable for large test suites).
-- If `test_we_are_in_the_21st_century` is run before `test_we_are_back_in_the_90s`, it will pass. This is because the monkey-patching is not yet in effect.
+How is this flaky you might ask - if a developer runs this on their machine shouldn't they immediately get an error and fix it? Well, not necessarily. The two tests might be in separate files and the developer might have not run the entire test suite locally (understandable for large test suites).
 
 To fix this, we can use `unittest.mock` to achieve the same effect.
 
@@ -691,7 +690,9 @@ def test_we_are_back_in_the_90s(monkeypatch):
     assert result.year == 1990
 ```
 
-**tip** To help detect state pollution issues, you can use the [pytest-randomly](https://pypi.org/project/pytest-randomly/) plugin to run your tests in random order. This way, you can increase the likelihood of catching state pollution issues if you run your test suite multiple times with different random seeds.
+**tip** To help detect state pollution issues, you can use the [pytest-randomly](https://pypi.org/project/pytest-randomly/) plugin to run your tests in random order. This way, you can increase the likelihood of catching state pollution issues if you run your test suite multiple times with different random seeds. Worth pointing out another similar plugin [pytest-random-order](https://pypi.org/project/pytest-random-order/).
+
+Furthermore, using plugins that run your test suite in parallel like [pytest-xdist](https://pypi.org/project/pytest-xdist/) can help you catch state pollution issues. This is because running your test suite in parallel will not adhere to the order of your tests and will increase the likelihood of catching state pollution issues.
 
 #### Database state pollution
 
