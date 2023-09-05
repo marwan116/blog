@@ -106,11 +106,11 @@ But wait a minute, shouldn't the GIL (Global Interpreter Lock) save us from this
 
 To ensure thread safety in scenarios like this, you would need to use proper synchronization mechanisms like locks and sempahores to protect shared state in your code, ensuring that only one thread can modify shared data at a time.
 
-**Tip** if you want to increase the likelihood of your test suite catching concurrency issues, it is recommended you:
+**Tips to detect this kind of flakiness** if you want to increase the likelihood of your test suite catching concurrency issues, it is recommended you:
 - set a smaller switch interval to force the python interpreter to switch between threads more frequently
 - run your test more than once
 
-i.e. Something like this:
+i.e. Your test suite should be running a code equivalent to the following:
 
 ```python
 # test suite - test_bank_account.py
@@ -134,7 +134,7 @@ if __name__ == "__main__":
         sys.setswitchinterval(original_switch_interval)
 ```
 
-If you want to avoid writing boilerplate code for running your test multiple times, you can use the [pytest-repeat](https://pypi.org/project/pytest-repeat/) plugin.
+To avoid writing boilerplate code for running your test multiple times, you can use the [pytest-repeat](https://pypi.org/project/pytest-repeat/) plugin.
 Worth pointing out a similar and perhaps more straightforward plugin [pytest-flakefinder](https://github.com/dropbox/pytest-flakefinder) which is meant to find flaky tests by running your test suite multiple times and comparing the results.
 
 Additionaly, you can create a pytest fixture to alter the switch interval of the test (note however that you are still modifying the switch interval for the entire test suite given the sys module is global)
@@ -363,7 +363,7 @@ Cell In[17], line 4, in precise_float32(value)
 ValueError: Loss of precision
 ```
 
-**Tip** To make an implementation more reliable, resort to division and subtraction to transform large number operations into smaller number operations to avoid loss of precision or overflow issues.
+**Tips to prevent this kind of flakiness**  To make an implementation more reliable, resort to division and subtraction to transform large number operations into smaller number operations to avoid loss of precision or overflow issues.
 
 #### Underflow or overflow issues
 
@@ -689,7 +689,7 @@ def test_we_are_back_in_the_90s(monkeypatch):
     assert result.year == 1990
 ```
 
-**tip** To help detect state pollution issues, you can use the [pytest-randomly](https://pypi.org/project/pytest-randomly/) plugin to run your tests in random order. This way, you can increase the likelihood of catching state pollution issues if you run your test suite multiple times with different random seeds. Worth pointing out another similar plugin [pytest-random-order](https://pypi.org/project/pytest-random-order/).
+**Tips to detect this kind of flakiness** To help detect state pollution issues, you can use the [pytest-randomly](https://pypi.org/project/pytest-randomly/) plugin to run your tests in random order. This way, you can increase the likelihood of catching state pollution issues if you run your test suite multiple times with different random seeds. Worth pointing out another similar plugin [pytest-random-order](https://pypi.org/project/pytest-random-order/).
 
 Furthermore, using plugins that run your test suite in parallel like [pytest-xdist](https://pypi.org/project/pytest-xdist/) can help you catch state pollution issues. This is because running your test suite in parallel will not adhere to the order of your tests and will increase the likelihood of catching state pollution issues.
 
