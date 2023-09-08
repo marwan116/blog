@@ -19,7 +19,7 @@ I outline the different types of flaky tests by borrowing a categorization from 
 - [Intra-test flakiness](#intra-test-flakiness)
     - [Concurrency - The GIL won't save you](#concurrency---the-gil-wont-save-you)
     - [Randomness](#randomness)
-        - [Algorithmic non-determinism](#algorithmic-non-determinism--careful-with-tolerance-values)
+        - [Algorithmic non-determinism](#algorithmic-non-determinism---careful-with-tolerance-values)
     - [Floating point arithmetic](#floating-point-arithmetic)
         - [Underflow or overflow issues](#underflow-or-overflow-issues)
         - [Loss in precision](#loss-in-precision)
