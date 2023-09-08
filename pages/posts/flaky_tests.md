@@ -9,7 +9,7 @@ author: Marwan
 ## Intro
 I am writing this article after listening to a [talk python](https://talkpython.fm/) podcast episode titled "Taming Flaky Tests" where Michael Kennedy, the host of the podcast, interviewed [Gregory M. Kapfhammer](https://www.gregorykapfhammer.com/) and [Owain Parry](https://www.linkedin.com/in/owain-parry-a0040a216) to discuss their research on software testing.
 
-My hope is to supplement the podcast by sharing examples of flaky tests inspired by tests I have encountered in the wild and by providing tips of how to detect and avoid flakiness.
+My hope is to supplement the podcast by sharing examples of flaky tests inspired by tests I have encountered in the wild and by providing tips on how to detect and avoid flakiness. Note that all the code shared in this article can be found on the associated github repo [flakycode](https://www.github.com/marwan116/flakycode)
 
 ## Outline
 
@@ -32,9 +32,10 @@ I outline the different types of flaky tests by borrowing a categorization from 
         - [Database state pollution](#database-state-pollution)
 - [External factors](#external-factors)
     - [Network](#network)
+    - [Asynchronous wait](#asynchronous-waiting-on-external-resources)
 
 ## Definition of flaky tests
-A flaky tests as defined by [pytest](https://docs.pytest.org/en/6.2.x/flaky.html) is one that exhibits intermittent or sporadic failure, that seems to have non-deterministic behaviour. Sometimes it passes, sometimes it fails, and it’s not clear why.
+A flaky test as defined by [pytest](https://docs.pytest.org/en/6.2.x/flaky.html) is one that exhibits intermittent or sporadic failure, that seems to have non-deterministic behaviour. Sometimes it passes, sometimes it fails, and it’s not clear why.
 
 
 ## Intra-Test Flakiness 
@@ -44,7 +45,7 @@ We will begin by discussing intra-test flakiness. This type of flakiness stems f
 
 First up is an example of a test where I attempt to make use of concurrency to speed up the test's runtime only to shoot myself in the foot by introducing flakiness.
 
-Can you spot the problem with this test example? Hint: always think twice before reaching out to the `threading` module to speed up your test suite.
+Can you spot the problem with this test example? (Hint: always think twice before reaching out to the `threading` module to speed up your test suite.)
 
 ```python
 # ----------------------------------
@@ -79,7 +80,7 @@ import threading
 
 def test_charge_and_refund_keeps_balance_the_same():
     # initialize bank account with $100 balance
-    account = BankAccount()
+    account = BankAccount(balance=100)
     original_balance = account.balance
 
     threads = []
@@ -102,7 +103,7 @@ def test_charge_and_refund_keeps_balance_the_same():
 
 The problem in this test arises because the `BankAccount` implementation is not thread-safe. The balance attribute isn't protected by a lock, allowing multiple threads to access and modify it simultaneously.
 
-But wait a minute, shouldn't the GIL (Global Interpreter Lock) save us from this concurrency issue? The GIL contrary to "popular fallacy" does not provide atomicity or synchronization guarantees for complex operations involving multiple bytecode instructions. What I mean here is that the GIL will cause threads to interleave but they can still interleave in a way that one thread runs `deposit` while another thread runs `withdraw` at the same time. 
+But wait a minute, shouldn't the GIL (Global Interpreter Lock) save us from this concurrency issue? The GIL contrary to "popular fallacy" does not provide atomicity or synchronization guarantees for complex operations involving multiple bytecode instructions. What I mean here is that the GIL will cause threads to interleave but they can still interleave in a way that one thread runs `deposit` while another thread runs `withdraw` at the same time.
 
 To ensure thread safety in scenarios like this, you would need to use proper synchronization mechanisms like locks and sempahores to protect shared state in your code, ensuring that only one thread can modify shared data at a time.
 
@@ -134,8 +135,7 @@ if __name__ == "__main__":
         sys.setswitchinterval(original_switch_interval)
 ```
 
-To avoid writing boilerplate code for running your test multiple times, you can use the [pytest-repeat](https://pypi.org/project/pytest-repeat/) plugin.
-Worth pointing out a similar and perhaps more straightforward plugin [pytest-flakefinder](https://github.com/dropbox/pytest-flakefinder) which is meant to find flaky tests by running your test suite multiple times and comparing the results.
+To avoid writing boilerplate code for running your test multiple times, you can use the [pytest-repeat](https://pypi.org/project/pytest-repeat/) plugin. Worth pointing out a similar and perhaps more straightforward plugin [pytest-flakefinder](https://github.com/dropbox/pytest-flakefinder) which is meant to find flaky tests by running your test suite multiple times and comparing the results.
 
 Additionaly, you can create a pytest fixture to alter the switch interval of the test
 
@@ -298,7 +298,7 @@ def compute_balance(amount, includes_flag):
 # ----------------------------------
 # test suite - test_compute_balance.py
 # ----------------------------------
-def test_balance_zeros_out():
+def test_eng_balance_is_correctly_computed():
     dept_expense = 1_630_000_000
     num_dept = 10
     num_eng_dept = np.random.randint(1, num_dept)
@@ -370,11 +370,11 @@ ValueError: Loss of precision
 Well you might be thinking, integers don't suffer from loss of precision issues. So why not use integers instead of floats? Well, you can still run into issues with integers if you are not careful. Consider the following example:
 
 ```python
-import numpy as np
-
 # ----------------------------------
 # implementation - compute_balance.py
 # ----------------------------------
+import numpy as np
+
 def compute_balance(amount, includes_flag):
     total_balance = np.int32(0)
     for amount, flag in zip(amount, includes_flag):
@@ -382,31 +382,35 @@ def compute_balance(amount, includes_flag):
             total_balance += amount
     return total_balance
 
+# ----------------------------------
+# test suite - test_compute_balance.py
+# ----------------------------------
 def test_eng_balance_is_correctly_computed():
-    dept_cost = 1_600_000_000
+    dept_expense = 1_630_000_000
     num_dept = 10
     num_eng_dept = np.random.randint(1, num_dept)
     num_non_eng_dept = num_dept - num_eng_dept
-    
+
     total_expenses = np.array(
-        [dept_cost] * num_dept, dtype=np.int32
+        [dept_expense] * num_dept, dtype=np.int32
     )
     is_eng_dept = np.array(
-        [True] * num_eng_dept + 
+        [True] * num_eng_dept +
         [False] * num_non_eng_dept,
         dtype="bool"
     )
-    
-    computed_total_eng_budget = (
-        compute_eng_balance(all_expenses, is_eng_dept)
+
+    computed_total_eng_spend = compute_balance(
+        total_expenses, is_eng_dept
     )
-    expected_total_eng_budget = (
-        dept_cost * num_eng_dept
+    expected_total_eng_spend = (
+        dept_expense * num_eng_dept
     )
-    assert np.isclose(
-        computed_total_eng_budget,
-        expected_total_eng_budget
+    diff = (
+        computed_total_eng_spend -
+        expected_total_eng_spend
     )
+    assert np.isclose(diff, 0)
 ```
 
 We check if the total engineering budget computed by summing up the balances of all engineering departments is equal to the total engineering budget computed by multiplying the engineering department cost by the number of engineering departments.
@@ -427,7 +431,7 @@ This can be fixed by making our implementation more robust to overflow either by
 The latter can be achieved by using np.seterr to set the overflow error to be raised like so:
 
 ```python
-def compute_eng_balance(all_expenses, is_eng_dept):
+def test_eng_balance_is_correctly_computed():
     np.seterr(over="raise")
     ...
 ```
@@ -440,11 +444,10 @@ Sometimes, a test is too restrictive and does not account for all possible corne
 Here I show some sample pandas code that attempts to stack and unstack a dataframe. Can you spot the problem?
 
 ```python
-import pytest
+# ----------------------------------
+# implementation - frame_stacker.py
+# ----------------------------------
 import pandas as pd
-from hypothesis import strategies as st
-from hypothesis.extra.pandas import data_frames, column
-
 
 class FrameStacker:
     def stack(self, data):
@@ -454,19 +457,24 @@ class FrameStacker:
         return data.unstack()
 
 
+# ----------------------------------
+# test suite - test_frame_stacker.py
+# ----------------------------------
+import pytest
+import numpy as np
+
 @pytest.fixture
 def data():
     """A way to mimick randomly generated data."""
     nrows = np.random.randint(0, 10)
     return pd.DataFrame({
-        "A": np.random.choices(
-            [1.0, 2.0, 3.0, np.nan], k=nrows
+        "A": np.random.choice(
+            [1.0, 2.0, 3.0, np.nan], size=nrows
         ),
-        "B": np.random.choices(
-            [1.0, 2.0, 3.0, np.nan], k=nrows
+        "B": np.random.choice(
+            [1.0, 2.0, 3.0, np.nan], size=nrows
         ),
     })
-
 
 def test_stack_unstack_roundtrip(data):
     stacker = FrameStacker()
@@ -517,6 +525,12 @@ One way to find the above-mentioned corner cases is to use fuzzing. Fuzzing is a
 Here is an example of how you can use hypothesis to find the corner cases mentioned above:
 
 ```python
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from hypothesis.extra.pandas import (
+    column, data_frames
+)
+
 @given(data=data_frames(
     columns=[
         column(
@@ -546,40 +560,38 @@ This test would fail most likely fail given 100 examples are usually enough to f
 Adding timeouts to tests can be a good way to ensure that tests do not take too long to run. However, if the timeout is too short, it can lead to flakiness. Consider the following example:
 
 ```python
-import numpy as np
-from scipy.optimize import newton
-
 # ----------------------------------
 # implementation - find_discount_rate.py
 # ----------------------------------
+import numpy as np
+from scipy.optimize import newton
+
+
 def calculate_present_value(discount_rate, cashflows):
     t = np.arange(1, len(cashflows) + 1)
     return np.sum(cashflows / (1 + discount_rate) ** t)
 
 
-def optimization_problem(
-    discount_rate, present_value, cashflows
-):
-    return calculate_present_value(
-        discount_rate, cashflows
-    ) - present_value
+def optimization_problem(discount_rate, present_value, cashflows):
+    return calculate_present_value(discount_rate, cashflows) - present_value
 
 
 def find_discount_rate(present_value, cashflows):
     try:
         return newton(
-            optimization_problem,
-            x0=0.1,
-            args=(present_value, cashflows),
-            maxiter=1000
+            optimization_problem, x0=0.1, args=(present_value, cashflows), maxiter=1000
         )
     except RuntimeError:
         # failed to converge
         return np.nan
 
+
 # ----------------------------------
 # test suite - test_find_discount_rate.py
 # ----------------------------------
+import pytest
+
+
 @pytest.mark.timeout(2)
 def test_find_discount_rate():
     h = 360_000
@@ -874,9 +886,58 @@ In general, it is a good idea to avoid making network calls in your test suite. 
 
 **Tip on preventing network-related issues** It is worth noting that there is a pytest plugin called [pytest-socket](https://pypi.org/project/pytest-socket/) that can be used to disable socket calls during tests.
 
+### Asynchronous waiting on external resources
+
+Another common source of flakiness is asynchronous waiting on external resources. Consider the following example where we wait for a file to be updated before we read it. The external system that updates the file is not under our control and it is possible that it is slow to update the file. We mimic this behavior by introducing a random delay in the test.
+
+```python
+# ----------------------------------
+# implementation - record_keeper.py
+# ----------------------------------
+import asyncio
+import aiofiles
+import random
+
+class RecordKeeper:
+    def __init__(self, filepath):
+        self.filepath = filepath
+
+    async def update_file(self, contents):
+        # mimic slow update
+        await asyncio.sleep(random.randint(1, 3))
+        
+        async with aiofiles.open(self.filepath, "w") as f:
+            print("writing to file")
+            await f.write(contents)
+            print("done writing to file")
+
+# ----------------------------------
+# test suite - test_record_keeper.py
+# ----------------------------------
+import pytest
+
+@pytest.mark.asyncio
+async def test_record_keeper(tmpdir):
+    filepath = tmpdir / "test.txt"
+    keeper = RecordKeeper(filepath)
+    # update is performed in the background
+    asyncio.create_task(keeper.update_file("hello world"))
+
+    # wait for a fixed amount of time
+    await asyncio.sleep(2)
+
+    async with aiofiles.open(filepath, "r") as f:
+        contents = await f.read()
+        assert contents == "hello world"
+```
+
+While this example might seem contrived, it is not uncommon to have to wait for external resources to be updated before we can read them. This is especially true when dealing with testing front-end applications where we might have to wait for the DOM to be updated before we can assert on it.
+
+**Tip on avoiding async wait flakiness** To avoid this kind of flakiness, avoid making use of heuristics to wait for external resources to be updated. Instead, resort to using explicit await statements to wait for the external resource to be updated. Additionally if its a unit test, you can mock the external resource to be updated immediately.
+
 
 ## Wrap up
 
 I hope the above examples will help you spot flakiness in your test suite and move you one step closer to a more reliable test suite. Having confidence in a test suite is important and will help you and your team rest easy. 
 
-To avoid this article becoming too long, I did not cover all the possible sources of flakiness. I encourage you to read the [Surveying the developer experience of flaky tests](https://www.gregorykapfhammer.com/download/research/papers/key/Parry2022-paper.pdf) paper for a comprehensive overview.
+To avoid this article becoming too long, I did not cover all the possible sources of flakiness. I encourage you to read the [Surveying the developer experience of flaky tests](https://www.gregorykapfhammer.com/download/research/papers/key/Parry2022-paper.pdf) paper for a comprehensive overview. Additionally you can refer to the [flakycode](https://www.github.com/marwan116/flakycode) github repository for the complete code examples.
