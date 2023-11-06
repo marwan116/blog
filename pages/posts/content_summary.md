@@ -1,0 +1,67 @@
+- content focus: Applying engineering best practices to the development of ML/AI systems
+- publishing channels:
+  - personal blog
+  - personal social media accounts
+- speaking opportunities:
+  - local meetups
+  - local conferences
+- suggested content:
+  - making Large Language Models reliable:
+    - Showcase the problem that we can't control the output of a language model
+    - Solution 1: Guardrails AI
+      - How it works?
+        - Prompt templating with a RAIL spec format
+        - Automatically generating RAIL spec from pydantic model
+        - Adding custom validator logic to not only enforce a schema but also to validate the output of the model
+        - Taking corrective action by reprompting, filtering, ignoring or raising an error
+      - Strengths:
+        - Works with any language model (e.g. local HF model, chat APIs like GPT-3, etc.)
+        - Custom validators allow for very complex use-cases (as ambitious as creating a chess engine)
+      - Weaknesses:
+        - (Latency) Relies on re-prompting to resolve any issues
+        - Library is still a work in progress
+    - Solution 2: AskMarvinAI
+      - How it works?
+        - Relies on "function calling" features of advanced chat APIs like GPT-3, Anthropic, etc.
+        - Provides several abstractions namely: AI functions, AI classifiers, AI modules and AI applications
+      - Strengths:
+        - Relying on function calling is a more robust approach (function calling behavior is more predictable than text generation based on a RAIL spec)
+        - AI Applications are a nice abstraction for building complex AI systems
+      - Weaknesses:
+        - (Compatibility) Relies on advanced chat APIs like Anthropic and OpenAI
+        - Does not provide capabilities for custom validators or corrective actions out of the box
+    - Solution 3: Outlines
+      - How it works?
+        - Regex-based guided text generation
+          - generate a finite state machine from a regex
+          - use the FSM to zero out invalid token transition logits
+          - re-normalize the logits and sample from the distribution
+          - repeat until the regex is satisfied 
+      - Strengths:
+        - (Latency) No re-prompting required
+      - Weaknesses:
+        - (Compatibility) Does not work with chat APIs - it requires a locally loaded model (e.g. HuggingFace) to control the logits of each token
+        - Adopts a greedy approach to sampling which can lead to sub-optimal results
+        - Does not provide capabilities for custom validators or corrective actions out of the box
+
+    - Building a nutritionbot:
+      - Showcasing the bot in action
+        - Priming the model with user preferences (e.g. food allergies, dietary restrictions, etc.)
+          - Summarizing and selecting from conversation history to further improve priming
+        - Gathering feedback from users to build a flywheel
+      - Implementation
+        - Customizing LLamaIndex components
+      - Observabilitiy using Arize AI
+      - Topic modeling to suggest topics to users
+      - Quiz generation to help users learn about nutrition
+
+    - Introducing RayCraft: a drop-in replacement for FastAPI that provides scaling, monitoring and orchestration capabilities for AI systems
+      - Getting started guide
+      - Showcase some examples
+      - Reference Ray Serve
+
+    - Reverse-engineering the Amazon review generative AI system
+        - Review Summarization to provide shoppers with concise and informative snippets that capture the main points of each review. 
+        - Product attribute extraction to help shoppers quickly find the most relevant reviews for a product or service.
+        - Sentiment Analysis to categorize attributes perceived as positive, negative, or neutral, to users quickly understand the overall sentiment towards a product or service.
+        - Review Ranking and Sorting: AI algorithms analyze review content, user preferences, and other factors to rank and sort reviews based on relevance and helpfulness.
